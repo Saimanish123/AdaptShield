@@ -79,9 +79,9 @@ def render_example(example: Dict[str, Any], tokenizer: Any) -> str:
 
 
 def train_sft(args: argparse.Namespace) -> None:
+    from unsloth import FastLanguageModel
     from datasets import Dataset
     from trl import SFTTrainer
-    from unsloth import FastLanguageModel
     import torch
 
     random.seed(args.seed)
@@ -155,6 +155,7 @@ def train_sft(args: argparse.Namespace) -> None:
         "fp16": not bf16_supported,
         "max_seq_length": args.max_seq_length,
         "dataset_text_field": "text",
+        "dataset_num_proc": 1,
         "packing": False,
     }
     train_args = train_config_cls(
@@ -168,6 +169,7 @@ def train_sft(args: argparse.Namespace) -> None:
         "processing_class": tokenizer,
         "tokenizer": tokenizer,
         "dataset_text_field": "text",
+        "dataset_num_proc": 1,
         "max_seq_length": args.max_seq_length,
         "packing": False,
     }
