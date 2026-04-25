@@ -6,6 +6,7 @@ IMPORTANT: No MITRE codes in alerts. No explicit strategy names.
 Agent must reason from raw metrics — not pattern match on codes.
 """
 
+import random
 from typing import Any, Dict, List
 
 VALID_NODES   = ["auth_service", "payment_service", "database", "api_gateway"]
@@ -44,6 +45,56 @@ TASK_CONFIGS = {
             "risk_tolerance": "low",
             "objective": "Protect sensitive data and adapt response if attacker persistence is established.",
         },
+    },
+}
+
+WORLD_FAMILY_SPLITS = {
+    "train": ["train-a", "train-b"],
+    "eval": ["eval-x", "eval-y"],
+}
+
+TASK_OPERATIONAL_MODES = {
+    "direct-triage": ["availability_guarded"],
+    "dual-pivot": ["containment_first", "evidence_preservation"],
+    "polymorphic-zero-day": [
+        "containment_first",
+        "forensic_hold",
+        "business_continuity",
+    ],
+}
+
+FAMILY_MISSION_NOTES = {
+    "train-a": "Primary incident feed emphasizes login telemetry and CMDB-linked service relationships.",
+    "train-b": "Primary incident feed emphasizes identity anomalies, service-account movement, and deploy context.",
+    "eval-x": "Primary incident feed emphasizes east-west callback patterns, release provenance drift, and egress clustering.",
+    "eval-y": "Primary incident feed emphasizes rejection bursts, archive staging, and cross-domain approval mismatches.",
+}
+
+MODE_HINTS = {
+    "availability_guarded": {
+        "sla_priority": "availability",
+        "risk_tolerance": "medium",
+        "objective_suffix": "Use one confirming signal before disruptive action when login noise overlaps with maintenance chatter.",
+    },
+    "containment_first": {
+        "sla_priority": "containment",
+        "risk_tolerance": "low",
+        "objective_suffix": "Prefer decisive containment once corroborating evidence suggests compromise is active.",
+    },
+    "evidence_preservation": {
+        "sla_priority": "balanced",
+        "risk_tolerance": "medium",
+        "objective_suffix": "Preserve attacker visibility during checkout pivots until identity misuse is corroborated across tools.",
+    },
+    "forensic_hold": {
+        "sla_priority": "containment",
+        "risk_tolerance": "low",
+        "objective_suffix": "Preserve attacker tradecraft long enough to map the callback path before cutting access entirely.",
+    },
+    "business_continuity": {
+        "sla_priority": "availability",
+        "risk_tolerance": "medium",
+        "objective_suffix": "Reduce blast radius while protecting customer-facing continuity whenever deception can safely buy time.",
     },
 }
 
@@ -176,3 +227,38 @@ def _with_mission_context(system_prompt: str, mission_profile: Dict[str, Any]) -
         f"- objective: {mission_profile.get('objective', 'Balance security and availability.')}",
     ])
     return f"{system_prompt}{mission}"
+
+
+def choose_world_family(world_split: str, requested_family: str | None = None) -> str:
+    if requested_family:
+        return requested_family
+    families = WORLD_FAMILY_SPLITS.get(world_split, WORLD_FAMILY_SPLITS["train"])
+    return random.choice(families)
+
+
+def choose_operational_mode(task_name: str, requested_mode: str | None = None) -> str:
+    if requested_mode:
+        return requested_mode
+    modes = TASK_OPERATIONAL_MODES.get(task_name, ["availability_guarded"])
+    return random.choice(modes)
+
+
+def mission_profile_for(task_name: str, operational_mode: str, world_family: str) -> Dict[str, Any]:
+    base = dict(TASK_CONFIGS[task_name].get("mission_profile", {}))
+    mode = MODE_HINTS.get(operational_mode, {})
+    base["world_family"] = world_family
+    base["operational_mode_hint"] = operational_mode.replace("_", " ")
+    base["scenario_style"] = FAMILY_MISSION_NOTES.get(world_family, "")
+    if mode.get("sla_priority"):
+        base["sla_priority"] = mode["sla_priority"]
+    if mode.get("risk_tolerance"):
+        base["risk_tolerance"] = mode["risk_tolerance"]
+    objective = str(base.get("objective", "")).rstrip()
+    suffix = str(mode.get("objective_suffix", "")).strip()
+    family_note = str(FAMILY_MISSION_NOTES.get(world_family, "")).strip()
+    if suffix:
+        objective = f"{objective} {suffix}".strip()
+    if family_note:
+        objective = f"{objective} {family_note}".strip()
+    base["objective"] = objective
+    return base

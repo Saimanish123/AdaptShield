@@ -64,6 +64,57 @@ PACKAGE_NAMES = ["core-auth-lib", "gateway-router", "payment-sdk", "session-cach
 DB_TABLES = ["customer_tokens", "invoice_archive", "payment_methods", "audit_events"]
 ALERT_SOURCES = ["SIEM", "EDR", "WAF", "NETFLOW"]
 
+FAMILY_REPLACEMENTS = {
+    "train-a": {
+        "failed login attempts": "failed login attempts",
+        "password spray pattern": "password spray pattern",
+        "Unusual internal connections": "Unusual internal connections",
+        "Cross-node traffic volume": "Cross-node traffic volume",
+        "outbound traffic": "outbound traffic",
+        "Large compressed archive creation activity": "Large compressed archive creation activity",
+        "unsigned package update request": "unsigned package update request",
+        "binary hash mismatch": "binary hash mismatch",
+        "Unexpected outbound connection": "Unexpected outbound connection",
+        "scheduled analytics cache refresh": "scheduled analytics cache refresh",
+    },
+    "train-b": {
+        "failed login attempts": "authentication rejections",
+        "password spray pattern": "credential abuse spread",
+        "Unusual internal connections": "Unexpected service-mesh hops",
+        "Cross-node traffic volume": "Identity-linked east-west volume",
+        "outbound traffic": "egress volume",
+        "Large compressed archive creation activity": "archive staging activity",
+        "unsigned package update request": "unapproved release request",
+        "binary hash mismatch": "manifest integrity drift",
+        "Unexpected outbound connection": "post-deploy callback session",
+        "scheduled analytics cache refresh": "scheduled cache tuning window",
+    },
+    "eval-x": {
+        "failed login attempts": "auth rejection burst",
+        "password spray pattern": "credential reuse sweep",
+        "Unusual internal connections": "callback-path fan-out",
+        "Cross-node traffic volume": "mesh traffic clustering",
+        "outbound traffic": "data egress pressure",
+        "Large compressed archive creation activity": "bundle staging activity",
+        "unsigned package update request": "release provenance anomaly",
+        "binary hash mismatch": "artifact provenance drift",
+        "Unexpected outbound connection": "release-linked callback session",
+        "scheduled analytics cache refresh": "approved observability warmup",
+    },
+    "eval-y": {
+        "failed login attempts": "lockout storm",
+        "password spray pattern": "shared-secret sweep",
+        "Unusual internal connections": "lateral fan-out path",
+        "Cross-node traffic volume": "cross-domain session churn",
+        "outbound traffic": "archive egress volume",
+        "Large compressed archive creation activity": "sealed archive staging",
+        "unsigned package update request": "cross-approval deploy request",
+        "binary hash mismatch": "release integrity anomaly",
+        "Unexpected outbound connection": "unknown release callback",
+        "scheduled analytics cache refresh": "scheduled edge warmup",
+    },
+}
+
 
 class AttackerEngine:
     """
@@ -76,10 +127,11 @@ class AttackerEngine:
     Hard task additionally shifts strategy mid-episode after turn 3.
     """
 
-    def __init__(self, task_name: str):
+    def __init__(self, task_name: str, world_family: str = "train-a"):
         random.seed(int(os.environ.get("ADAPTSHIELD_SEED", random.randint(0, 9999))))
 
         self.task_name     = task_name
+        self.world_family  = world_family
         self._episode      = 0   # internal — NEVER passed to agent
         self._turn         = 0   # within-episode turn counter
         self._stage_idx    = 0   # current attack stage index
@@ -196,7 +248,7 @@ class AttackerEngine:
                 f"{alert_prefix} Scheduled vulnerability scan completed: 0 critical findings",
             ],
         ]
-        return random.choice(options)
+        return [self._surface(line) for line in random.choice(options)]
 
     def _build_attack_state(
         self,
@@ -292,7 +344,7 @@ class AttackerEngine:
                     f"{alert_prefix} change calendar: no approved gateway deploy window covers this request"
                 )
 
-        return nodes, alerts
+        return nodes, [self._surface(alert) for alert in alerts]
 
     def _alert_prefix(self) -> str:
         """Return deterministic-looking SOC alert metadata under ADAPTSHIELD_SEED."""
@@ -301,3 +353,9 @@ class AttackerEngine:
         minute = random.randint(0, 59)
         second = random.randint(0, 59)
         return f"[{source}-{alert_id} 03:{minute:02d}:{second:02d}Z]"
+
+    def _surface(self, text: str) -> str:
+        surfaced = str(text)
+        for source, target in FAMILY_REPLACEMENTS.get(self.world_family, {}).items():
+            surfaced = surfaced.replace(source, target)
+        return surfaced

@@ -31,7 +31,14 @@ from openenv.core.env_server.types import State
 from models import AdaptShieldAction, Phase1Action, Phase2Action, AdaptShieldObservation
 from server.attacker import AttackerEngine
 from server.grader import grade_step, normalize_episode_score, _clamp
-from server.scenarios import TASK_CONFIGS, build_phase1_obs, build_phase2_obs
+from server.scenarios import (
+    TASK_CONFIGS,
+    build_phase1_obs,
+    build_phase2_obs,
+    choose_operational_mode,
+    choose_world_family,
+    mission_profile_for,
+)
 
 
 DEFENSE_TTL = {
@@ -166,14 +173,25 @@ class AdaptShieldEnvironment(Environment):
 
     SUPPORTS_CONCURRENT_SESSIONS: bool = True
 
-    def __init__(self, task_name: str = "direct-triage"):
+    def __init__(
+        self,
+        task_name: str = "direct-triage",
+        world_split: str | None = None,
+        world_family: str | None = None,
+        operational_mode: str | None = None,
+    ):
         if task_name not in TASK_CONFIGS:
             task_name = "direct-triage"
 
         self._task_name       = task_name
         self._config          = TASK_CONFIGS[task_name]
-        self._mission_profile = dict(self._config.get("mission_profile", {}))
-        self._attacker        = AttackerEngine(task_name)
+        self._world_split     = self._sanitize_world_split(world_split or os.environ.get("ADAPTSHIELD_WORLD_SPLIT", "train"))
+        self._requested_world_family = world_family or os.environ.get("ADAPTSHIELD_WORLD_FAMILY")
+        self._requested_operational_mode = operational_mode or os.environ.get("ADAPTSHIELD_OPERATIONAL_MODE")
+        self._world_family    = choose_world_family(self._world_split, self._requested_world_family)
+        self._operational_mode = choose_operational_mode(task_name, self._requested_operational_mode)
+        self._mission_profile = mission_profile_for(task_name, self._operational_mode, self._world_family)
+        self._attacker        = AttackerEngine(task_name, world_family=self._world_family)
         self._state           = State(episode_id=str(uuid4()), step_count=0)
 
         # Episode state
@@ -206,8 +224,10 @@ class AdaptShieldEnvironment(Environment):
         if task_name and task_name in TASK_CONFIGS:
             self._task_name = task_name
             self._config    = TASK_CONFIGS[task_name]
-            self._mission_profile = dict(self._config.get("mission_profile", {}))
-            self._attacker  = AttackerEngine(task_name)
+        self._world_family = choose_world_family(self._world_split, self._requested_world_family)
+        self._operational_mode = choose_operational_mode(self._task_name, self._requested_operational_mode)
+        self._mission_profile = mission_profile_for(self._task_name, self._operational_mode, self._world_family)
+        self._attacker  = AttackerEngine(self._task_name, world_family=self._world_family)
 
         self._state              = State(episode_id=str(uuid4()), step_count=0)
         self._turn               = 1
@@ -228,9 +248,7 @@ class AdaptShieldEnvironment(Environment):
         self._turn_tool_results  = {}
 
         self._attacker.reset_episode()
-        self._turn_config = self._with_active_defense_alerts(
-            self._attacker.build_observation()
-        )
+        self._turn_config = self._prepare_turn_config(self._attacker.build_observation())
 
         obs_dict = build_phase1_obs(
             turn_config=self._turn_config,
@@ -394,9 +412,7 @@ class AdaptShieldEnvironment(Environment):
             norm_score = normalize_episode_score(self._rewards)
 
             if not episode_done:
-                self._turn_config = self._with_active_defense_alerts(
-                    self._with_foothold_context(self._attacker.build_observation())
-                )
+                self._turn_config = self._prepare_turn_config(self._attacker.build_observation())
                 obs_dict = build_phase1_obs(
                     turn_config=self._turn_config,
                     history=self._history,
@@ -477,6 +493,10 @@ class AdaptShieldEnvironment(Environment):
             done               = d.get("done", False),
             metadata           = d.get("metadata", {"normalized_score": 0.50}),
         )
+
+    @staticmethod
+    def _sanitize_world_split(value: str) -> str:
+        return value if value in {"train", "eval"} else "train"
 
     def _error_observation(self, error_message: str) -> AdaptShieldObservation:
         """Return a safe observation instead of letting step() raise."""
@@ -653,7 +673,7 @@ class AdaptShieldEnvironment(Environment):
             "phase": self._phase,
             "node": node,
             "query": query,
-            "events": events,
+            "events": [self._surface_text(event) for event in events],
             "evidence_type": evidence_type,
             "confidence": confidence,
             "verified": relevant and evidence_type == strategy,
@@ -691,6 +711,7 @@ class AdaptShieldEnvironment(Environment):
             "safe_actions": safe_actions,
             "evidence_type": "operational_context",
             "verified": True,
+            "result_summary": self._surface_text(f"{node} criticality {criticality}; blast radius {len(dependencies)}"),
         }
 
     def _tool_edr_status(self, node: str) -> Dict[str, Any]:
@@ -761,6 +782,7 @@ class AdaptShieldEnvironment(Environment):
             "evidence_type": evidence_type,
             "confidence": confidence,
             "verified": relevant and evidence_type == strategy,
+            "process_note": self._surface_text(str(status.get("process_note", ""))) if status.get("process_note") else "",
         }
 
     def _tool_vuln_lookup(self, node: str, package: str = "") -> Dict[str, Any]:
@@ -800,7 +822,11 @@ class AdaptShieldEnvironment(Environment):
             "turn": self._turn,
             "phase": self._phase,
             "node": node,
-            **advisory,
+            **{
+                **advisory,
+                "finding": self._surface_text(str(advisory.get("finding", ""))),
+                "recommended_mitigation": self._surface_text(str(advisory.get("recommended_mitigation", ""))),
+            },
             "evidence_type": evidence_type,
             "confidence": confidence,
             "verified": relevant,
@@ -857,6 +883,19 @@ class AdaptShieldEnvironment(Environment):
                 "confidence": 0.69,
             })
 
+        if (
+            self._task_name == "dual-pivot" and
+            strategy == "lateral_movement" and
+            self._operational_mode == "evidence_preservation"
+        ):
+            lookup["source_status"] = "unexpected_but_trackable"
+            lookup["result_summary"] = self._surface_text(
+                "Identity trail is intact; preserving visibility before hard containment is mission-aligned."
+            )
+        else:
+            lookup["result_summary"] = self._surface_text(
+                f"account={lookup['account']} source={lookup['recent_source_host']} anomaly={lookup['identity_anomaly']}"
+            )
         return lookup
 
     def _tool_change_calendar_lookup(self, node: str) -> Dict[str, Any]:
@@ -878,6 +917,13 @@ class AdaptShieldEnvironment(Environment):
             scheduled = False
             confidence = 0.72
 
+        change_status = "scheduled" if scheduled else "no_matching_change"
+        if (
+            self._task_name == "dual-pivot" and
+            strategy == "lateral_movement" and
+            self._operational_mode == "evidence_preservation"
+        ):
+            change_status = "forensic_observation_hold"
         return {
             "tool": "change_calendar_lookup",
             "turn": self._turn,
@@ -885,7 +931,7 @@ class AdaptShieldEnvironment(Environment):
             "node": node,
             **change,
             "scheduled": scheduled,
-            "change_status": "scheduled" if scheduled else "no_matching_change",
+            "change_status": change_status,
             "confidence": confidence,
             "evidence_type": "benign" if scheduled else ("supply_chain" if node == target and strategy == "supply_chain" else "operational_context"),
             "verified": scheduled or (node == target and strategy == "supply_chain"),
@@ -942,6 +988,13 @@ class AdaptShieldEnvironment(Environment):
                 "verified": True,
             })
 
+        if (
+            self._task_name == "polymorphic-zero-day" and
+            self._operational_mode in {"forensic_hold", "business_continuity"} and
+            node == target and strategy in {"lateral_movement", "exfiltration"}
+        ):
+            summary["traffic_pattern"] = "controlled_observation_window"
+            summary["confidence"] = max(float(summary["confidence"]), 0.83)
         return summary
 
     def _record_tool_result(self, result: Dict[str, Any]) -> None:
@@ -1034,6 +1087,9 @@ class AdaptShieldEnvironment(Environment):
         updated = dict(metadata or {})
         updated["active_defenses"] = self._active_defense_snapshot()
         updated["mission_profile"] = self._mission_profile
+        updated["world_split"] = self._world_split
+        updated["world_family"] = self._world_family
+        updated["operational_mode"] = self._operational_mode
         updated["available_tools"] = [dict(tool) for tool in AVAILABLE_SOC_TOOLS]
         updated["tool_trace"] = [dict(row) for row in self._tool_trace]
         updated["tool_calls_this_turn"] = len([
@@ -1087,6 +1143,69 @@ class AdaptShieldEnvironment(Environment):
         updated["correct_target"] = "payment_service"
         updated["foothold_context"] = True
         return updated
+
+    def _prepare_turn_config(self, turn_config: Dict[str, Any]) -> Dict[str, Any]:
+        updated = self._with_foothold_context(turn_config)
+        updated = self._apply_operational_mode(updated)
+        updated = self._with_active_defense_alerts(updated)
+        return updated
+
+    def _apply_operational_mode(self, turn_config: Dict[str, Any]) -> Dict[str, Any]:
+        updated = dict(turn_config)
+        alerts = list(updated.get("active_alerts", []))
+        strategy = str(updated.get("strategy", "benign"))
+        stage = str(updated.get("attack_stage", "recon"))
+
+        if self._task_name == "dual-pivot" and strategy == "lateral_movement":
+            if self._operational_mode == "evidence_preservation":
+                updated["correct_action"] = "honeypot"
+                alerts.append(
+                    self._surface_text(
+                        "[MODE] Checkout incident posture favors preserving attacker visibility until identity misuse is corroborated."
+                    )
+                )
+            else:
+                updated["correct_action"] = "isolate"
+                alerts.append(
+                    self._surface_text(
+                        "[MODE] Checkout incident posture favors decisive containment once the pivot is corroborated."
+                    )
+                )
+
+        if self._task_name == "polymorphic-zero-day" and not updated.get("is_benign", False):
+            if self._operational_mode in {"forensic_hold", "business_continuity"} and strategy in {"lateral_movement", "exfiltration"}:
+                updated["correct_action"] = "honeypot"
+                alerts.append(
+                    self._surface_text(
+                        "[MODE] Enterprise posture favors deception over immediate isolation while mapping the callback path."
+                    )
+                )
+            elif self._operational_mode == "containment_first":
+                alerts.append(
+                    self._surface_text(
+                        "[MODE] Enterprise posture favors immediate containment once compromise is corroborated."
+                    )
+                )
+            if self._operational_mode == "business_continuity" and stage == "exploit":
+                nodes = {name: dict(metrics) for name, metrics in updated.get("network_nodes", {}).items()}
+                payment = nodes.setdefault("payment_service", {})
+                payment["status"] = "elevated"
+                payment["request_rate"] = max(int(payment.get("request_rate", 0)), 122)
+                updated["network_nodes"] = nodes
+                alerts.append(
+                    self._surface_text(
+                        "[MODE] Customer traffic remains sensitive; service continuity pressure is elevated during this window."
+                    )
+                )
+
+        updated["active_alerts"] = alerts
+        updated["world_split"] = self._world_split
+        updated["world_family"] = self._world_family
+        updated["operational_mode"] = self._operational_mode
+        return updated
+
+    def _surface_text(self, text: str) -> str:
+        return self._attacker._surface(text)
 
 
 def _action_value(value: Any, default: str) -> str:

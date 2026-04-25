@@ -39,6 +39,8 @@ class EnvironmentRegressionTests(unittest.TestCase):
         self.assertEqual(phase1_obs.turn, 1)
         self.assertEqual(phase1_obs.metadata["normalized_score"], 0.50)
         self.assertIn("mission_profile", phase1_obs.metadata)
+        self.assertEqual(phase1_obs.metadata["world_split"], "train")
+        self.assertIn(phase1_obs.metadata["world_family"], {"train-a", "train-b"})
 
         phase2_obs = env.step(
             AdaptShieldAction(
@@ -177,7 +179,7 @@ class EnvironmentRegressionTests(unittest.TestCase):
         self.assertNotIn("evidence_type", netflow)
 
     def test_dual_pivot_requires_tool_confirmation_after_pivot(self) -> None:
-        env = AdaptShieldEnvironment("dual-pivot")
+        env = AdaptShieldEnvironment("dual-pivot", operational_mode="containment_first")
         env.reset()
 
         for _ in range(3):
@@ -220,7 +222,7 @@ class EnvironmentRegressionTests(unittest.TestCase):
         self.assertFalse(obs.metadata["score_breakdown"]["tool_evidence_found"])
         self.assertIn("requires stronger SOC evidence", obs.last_action_result)
 
-        env = AdaptShieldEnvironment("dual-pivot")
+        env = AdaptShieldEnvironment("dual-pivot", operational_mode="containment_first")
         env.reset()
         for _ in range(3):
             turn_config = dict(getattr(env, "_turn_config", {}) or {})
@@ -261,6 +263,65 @@ class EnvironmentRegressionTests(unittest.TestCase):
         self.assertTrue(obs.metadata["score_breakdown"]["tool_verification_required"])
         self.assertTrue(obs.metadata["score_breakdown"]["tool_evidence_found"])
         self.assertIn("Optimal: isolate", obs.last_action_result)
+
+    def test_world_family_metadata_and_surfaces_are_selectable(self) -> None:
+        env = AdaptShieldEnvironment(
+            "direct-triage",
+            world_split="eval",
+            world_family="eval-x",
+        )
+        obs = env.reset()
+        self.assertEqual(obs.metadata["world_split"], "eval")
+        self.assertEqual(obs.metadata["world_family"], "eval-x")
+        alerts_blob = " ".join(obs.active_alerts).lower()
+        self.assertTrue(
+            "auth rejection burst" in alerts_blob or
+            "credential reuse sweep" in alerts_blob
+        )
+
+    def test_operational_modes_change_medium_and_hard_optimal_actions(self) -> None:
+        medium_env = AdaptShieldEnvironment(
+            "dual-pivot",
+            operational_mode="evidence_preservation",
+            world_family="train-b",
+        )
+        medium_env.reset()
+        for _ in range(3):
+            turn_config = dict(getattr(medium_env, "_turn_config", {}) or {})
+            medium_env.step(
+                AdaptShieldAction(
+                    threat_type=str(turn_config.get("strategy", "brute_force")),
+                    confidence=0.9,
+                    target_node=str(turn_config.get("correct_target", "auth_service")),
+                    recommended_action=str(turn_config.get("correct_action", "monitor")),
+                )
+            )
+            medium_env.step(
+                AdaptShieldAction(
+                    action=str(turn_config.get("correct_action", "monitor")),
+                    target_node=str(turn_config.get("correct_target", "auth_service")),
+                )
+            )
+        self.assertEqual(getattr(medium_env, "_turn_config", {}).get("strategy"), "lateral_movement")
+        self.assertEqual(getattr(medium_env, "_turn_config", {}).get("correct_action"), "honeypot")
+
+        hard_env = AdaptShieldEnvironment(
+            "polymorphic-zero-day",
+            operational_mode="forensic_hold",
+            world_family="eval-y",
+        )
+        hard_obs = hard_env.reset()
+        adjusted = hard_env._apply_operational_mode({
+            "strategy": "exfiltration",
+            "attack_stage": "exploit",
+            "is_benign": False,
+            "correct_action": "isolate",
+            "correct_target": "database",
+            "network_nodes": {"payment_service": {"status": "healthy", "request_rate": 85}},
+            "active_alerts": [],
+        })
+        self.assertEqual(hard_obs.metadata["operational_mode"], "forensic_hold")
+        self.assertEqual(adjusted.get("correct_action"), "honeypot")
 
     def test_prompt_bank_builds_phase_rows_without_gpu_deps(self) -> None:
         rows = train_module.build_prompt_bank(

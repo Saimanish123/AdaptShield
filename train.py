@@ -291,6 +291,8 @@ def build_prompt_bank(
     max_steps: int,
     use_tools: bool,
     seed: int,
+    world_split: str = "train",
+    world_family: str | None = None,
 ) -> List[Dict[str, Any]]:
     random.seed(seed)
     rows: List[Dict[str, Any]] = []
@@ -301,7 +303,11 @@ def build_prompt_bank(
             selected_task=selected_task,
             curriculum=curriculum,
         )
-        env = AdaptShieldEnvironment(task_name=task)
+        env = AdaptShieldEnvironment(
+            task_name=task,
+            world_split=world_split,
+            world_family=world_family,
+        )
         obs = env.reset()
         while not obs.done and len(rows) < rollout_episodes * max_steps * 2:
             phase = int(getattr(obs, "phase", 1))
@@ -321,6 +327,9 @@ def build_prompt_bank(
                 "phase": phase,
                 "turn": int(getattr(obs, "turn", 0) or 0),
                 "attack_stage": reference["stage"],
+                "world_split": getattr(env, "_world_split", world_split),
+                "world_family": getattr(env, "_world_family", world_family or ""),
+                "operational_mode": getattr(env, "_operational_mode", ""),
                 "expected_threat_type": reference["threat_type"],
                 "expected_target_node": reference["target_node"],
                 "expected_recommended_action": reference["expected_action"] if phase == 1 else "",
@@ -486,6 +495,8 @@ def evaluate_model_suite(
     eval_episodes: int,
     max_steps: int,
     use_tools: bool,
+    world_split: str = "train",
+    world_family: str | None = None,
 ) -> List[Dict[str, Any]]:
     tasks = TASKS if selected_task == "all" else [selected_task]
     rows: List[Dict[str, Any]] = []
@@ -500,6 +511,8 @@ def evaluate_model_suite(
                 task=task,
                 max_steps=max_steps,
                 use_tools=use_tools,
+                world_split=world_split,
+                world_family=world_family,
             )
             scores.append(float(metrics["score"]))
             steps.append(int(metrics["steps"]))
@@ -512,6 +525,8 @@ def evaluate_model_suite(
             "steps": round(sum(steps) / len(steps), 2) if steps else 0.0,
             "tool_calls": round(sum(tool_calls) / len(tool_calls), 2) if tool_calls else 0.0,
             "eval_episodes": eval_episodes,
+            "world_split": world_split,
+            "world_family": world_family or "auto",
         })
     return rows
 
@@ -522,8 +537,14 @@ def run_model_episode(
     task: str,
     max_steps: int,
     use_tools: bool,
+    world_split: str = "train",
+    world_family: str | None = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-    env = AdaptShieldEnvironment(task_name=task)
+    env = AdaptShieldEnvironment(
+        task_name=task,
+        world_split=world_split,
+        world_family=world_family,
+    )
     obs = env.reset()
     samples: List[Dict[str, Any]] = []
     rewards: List[float] = []
@@ -579,6 +600,9 @@ def run_model_episode(
         "reward_sum": sum(rewards),
         "mean_reward": sum(rewards) / len(rewards) if rewards else 0.0,
         "tool_calls": tool_calls,
+        "world_split": world_split,
+        "world_family": metadata.get("world_family", world_family or "auto"),
+        "operational_mode": metadata.get("operational_mode", "unknown"),
     }
 
 

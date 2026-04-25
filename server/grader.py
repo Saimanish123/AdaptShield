@@ -249,8 +249,10 @@ def grade_step(
         reward += STAGE_ESCALATION * 2
 
     # ── Phase 2 action grading ─────────────────────────────────────────────
-    optimal = correct_action if contextual_countermeasure else OPTIMAL_ACTION.get(strategy, correct_action)
-    heavy   = "" if contextual_countermeasure else HEAVY_ACTION.get(strategy, "")
+    optimal = correct_action
+    heavy = "" if contextual_countermeasure else HEAVY_ACTION.get(strategy, "")
+    if heavy == optimal:
+        heavy = ""
     requires_tool_verification = (
         not is_benign and
         strategy in OPTIMAL_ACTION and

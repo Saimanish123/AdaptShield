@@ -82,14 +82,30 @@ def build_reward_plot(rows: List[Dict[str, Any]], output_path: Path) -> None:
         return
 
     checkpoint_labels = [str(row["checkpoint"]) for row in rows]
-    scores = [float(row["score"]) for row in rows]
+    in_distribution_scores = [float(row["in_distribution_score"]) for row in rows]
+    heldout_scores = [float(row["heldout_score"]) for row in rows]
 
     plt.figure(figsize=(10, 5))
-    plt.plot(range(len(rows)), scores, color="#136f63", linewidth=2.5, marker="o", label="held-out mean reward")
+    plt.plot(
+        range(len(rows)),
+        in_distribution_scores,
+        color="#136f63",
+        linewidth=2.5,
+        marker="o",
+        label="in-distribution mean reward",
+    )
+    plt.plot(
+        range(len(rows)),
+        heldout_scores,
+        color="#8a3ffc",
+        linewidth=2.5,
+        marker="s",
+        label="held-out family mean reward",
+    )
     plt.xticks(range(len(rows)), checkpoint_labels, rotation=35, ha="right")
     plt.xlabel("Checkpoint")
     plt.ylabel("normalized_score")
-    plt.title("AdaptShield Held-out Reward Curve")
+    plt.title("AdaptShield In-Distribution vs Held-out Reward Curve")
     plt.ylim(0.0, 1.0)
     plt.grid(alpha=0.3)
     plt.legend()
@@ -135,6 +151,8 @@ def evaluate_suite_with_seed(
     max_steps: int,
     use_tools: bool,
     seed_start: int,
+    world_split: str,
+    world_family: str | None = None,
 ) -> List[Dict[str, Any]]:
     tasks = ["direct-triage", "dual-pivot", "polymorphic-zero-day"] if selected_task == "all" else [selected_task]
     rows: List[Dict[str, Any]] = []
@@ -147,12 +165,14 @@ def evaluate_suite_with_seed(
             for episode_index in range(eval_episodes):
                 os.environ["ADAPTSHIELD_SEED"] = str(seed_start + task_index * 100 + episode_index)
                 _, metrics = run_model_episode(
-                    model=model,
-                    tokenizer=tokenizer,
-                    task=task,
-                    max_steps=max_steps,
-                    use_tools=use_tools,
-                )
+                model=model,
+                tokenizer=tokenizer,
+                task=task,
+                max_steps=max_steps,
+                use_tools=use_tools,
+                world_split=world_split,
+                world_family=world_family,
+            )
                 scores.append(float(metrics["score"]))
                 steps.append(int(metrics["steps"]))
                 tool_calls.append(int(metrics["tool_calls"]))
@@ -163,6 +183,8 @@ def evaluate_suite_with_seed(
                 "tool_calls": round(sum(tool_calls) / len(tool_calls), 2) if tool_calls else 0.0,
                 "eval_episodes": eval_episodes,
                 "seed_start": seed_start,
+                "world_split": world_split,
+                "world_family": world_family or "auto",
             })
     finally:
         if original_seed is None:
@@ -181,6 +203,8 @@ def evaluate_saved_checkpoints(
     max_steps: int,
     use_tools: bool,
     heldout_seed: int,
+    train_world_split: str,
+    heldout_world_split: str,
 ) -> List[Dict[str, Any]]:
     from unsloth import FastLanguageModel
 
@@ -193,7 +217,7 @@ def evaluate_saved_checkpoints(
             load_in_4bit=True,
             dtype=None,
         )
-        evaluation_rows = evaluate_suite_with_seed(
+        in_distribution_rows = evaluate_suite_with_seed(
             model=model,
             tokenizer=tokenizer,
             selected_task=selected_task,
@@ -201,15 +225,32 @@ def evaluate_saved_checkpoints(
             max_steps=max_steps,
             use_tools=use_tools,
             seed_start=heldout_seed + index * 1000,
+            world_split=train_world_split,
         )
-        aggregate = round(
-            sum(float(row["score"]) for row in evaluation_rows) / max(1, len(evaluation_rows)),
+        heldout_rows = evaluate_suite_with_seed(
+            model=model,
+            tokenizer=tokenizer,
+            selected_task=selected_task,
+            eval_episodes=eval_episodes,
+            max_steps=max_steps,
+            use_tools=use_tools,
+            seed_start=heldout_seed + index * 1000,
+            world_split=heldout_world_split,
+        )
+        in_distribution_score = round(
+            sum(float(row["score"]) for row in in_distribution_rows) / max(1, len(in_distribution_rows)),
+            3,
+        )
+        heldout_score = round(
+            sum(float(row["score"]) for row in heldout_rows) / max(1, len(heldout_rows)),
             3,
         )
         rows.append({
             "checkpoint": checkpoint_dir.name,
-            "score": aggregate,
-            "evaluation_rows": evaluation_rows,
+            "in_distribution_score": in_distribution_score,
+            "heldout_score": heldout_score,
+            "in_distribution_rows": in_distribution_rows,
+            "heldout_rows": heldout_rows,
         })
         del model
         del tokenizer
@@ -331,6 +372,17 @@ def train_sft(args: argparse.Namespace) -> None:
         max_steps=args.eval_max_steps,
         use_tools=args.use_tools,
         seed_start=args.heldout_seed,
+        world_split=args.train_world_split,
+    )
+    heldout_evaluation_rows = evaluate_suite_with_seed(
+        model=model,
+        tokenizer=tokenizer,
+        selected_task=args.eval_task,
+        eval_episodes=args.eval_episodes,
+        max_steps=args.eval_max_steps,
+        use_tools=args.use_tools,
+        seed_start=args.heldout_seed,
+        world_split=args.heldout_world_split,
     )
 
     reward_curve_rows = evaluate_saved_checkpoints(
@@ -342,6 +394,8 @@ def train_sft(args: argparse.Namespace) -> None:
         max_steps=args.eval_max_steps,
         use_tools=args.use_tools,
         heldout_seed=args.heldout_seed,
+        train_world_split=args.train_world_split,
+        heldout_world_split=args.heldout_world_split,
     )
     reward_plot_path = output_dir / "reward_curve.png"
     build_reward_plot(reward_curve_rows, reward_plot_path)
@@ -354,7 +408,10 @@ def train_sft(args: argparse.Namespace) -> None:
         "epochs": args.epochs,
         "learning_rate": args.lr,
         "evaluation_rows": evaluation_rows,
+        "heldout_evaluation_rows": heldout_evaluation_rows,
         "heldout_seed": args.heldout_seed,
+        "train_world_split": args.train_world_split,
+        "heldout_world_split": args.heldout_world_split,
         "reward_curve_rows": reward_curve_rows,
         "log_history": log_history,
     }
@@ -394,6 +451,8 @@ def main() -> None:
     parser.add_argument("--lr", type=float, default=2e-4)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--heldout-seed", type=int, default=314)
+    parser.add_argument("--train-world-split", default="train", choices=["train", "eval"])
+    parser.add_argument("--heldout-world-split", default="eval", choices=["train", "eval"])
     parser.add_argument("--max-rows", type=int, default=0)
     parser.add_argument("--max-seq-length", type=int, default=MAX_SEQ_LEN)
     parser.add_argument("--per-device-batch-size", type=int, default=2)

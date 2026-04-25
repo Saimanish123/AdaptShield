@@ -31,6 +31,8 @@ def build_dataset(
     rollout_episodes: int,
     max_steps: int,
     seed: int,
+    world_split: str,
+    world_family: str | None,
 ) -> List[Dict[str, Any]]:
     random.seed(seed)
     rows: List[Dict[str, Any]] = []
@@ -42,7 +44,11 @@ def build_dataset(
             selected_task=selected_task,
             curriculum=curriculum,
         )
-        env = AdaptShieldEnvironment(task_name=task)
+        env = AdaptShieldEnvironment(
+            task_name=task,
+            world_split=world_split,
+            world_family=world_family,
+        )
         obs = env.reset()
         step_count = 0
 
@@ -67,6 +73,9 @@ def build_dataset(
                 "turn": int(getattr(obs, "turn", 0) or 0),
                 "phase": phase,
                 "attack_stage": reference["stage"],
+                "world_split": getattr(env, "_world_split", world_split),
+                "world_family": getattr(env, "_world_family", world_family or ""),
+                "operational_mode": getattr(env, "_operational_mode", ""),
                 "is_benign": bool(reference["is_benign"]),
                 "expected_threat_type": reference["threat_type"],
                 "expected_target_node": reference["target_node"],
@@ -146,6 +155,17 @@ def main() -> None:
         default="data/adaptshield_sft.jsonl",
         help="Where to write the JSONL dataset.",
     )
+    parser.add_argument(
+        "--world-split",
+        default="train",
+        choices=["train", "eval"],
+        help="World-family split used to generate the dataset.",
+    )
+    parser.add_argument(
+        "--world-family",
+        default=None,
+        help="Optional fixed world family override (e.g. train-a, eval-x).",
+    )
     args = parser.parse_args()
 
     rows = build_dataset(
@@ -155,6 +175,8 @@ def main() -> None:
         rollout_episodes=args.episodes,
         max_steps=args.max_steps,
         seed=args.seed,
+        world_split=args.world_split,
+        world_family=args.world_family,
     )
 
     output_path = Path(args.output)
