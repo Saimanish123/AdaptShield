@@ -26,7 +26,7 @@ def repo_namespace(repo_id: str) -> str:
 
 def authenticated_username(api: HfApi) -> str | None:
     try:
-        info = api.whoami()
+        info = api.whoami(cache=True)
     except Exception:
         return None
     if isinstance(info, dict):
@@ -210,6 +210,7 @@ def main() -> int:
         command=["bash", "-lc", command],
         flavor=args.flavor,
         timeout=args.timeout,
+        namespace=repo_namespace(args.runs_repo),
         env={
             "RUNS_REPO": args.runs_repo,
             "RUNS_REPO_TYPE": args.runs_repo_type,
