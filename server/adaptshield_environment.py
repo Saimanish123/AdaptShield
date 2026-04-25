@@ -69,6 +69,21 @@ AVAILABLE_SOC_TOOLS = [
         "endpoint": "/tools/vuln_lookup",
         "description": "Query internal package/advisory risk for supply-chain investigations.",
     },
+    {
+        "name": "identity_lookup",
+        "endpoint": "/tools/identity_lookup",
+        "description": "Inspect account type, privilege level, normal host affinity, and anomalous identity use.",
+    },
+    {
+        "name": "change_calendar_lookup",
+        "endpoint": "/tools/change_calendar_lookup",
+        "description": "Check whether maintenance, deploys, or patch windows were scheduled for the target service.",
+    },
+    {
+        "name": "netflow_lookup",
+        "endpoint": "/tools/netflow_lookup",
+        "description": "Inspect east-west and outbound traffic summaries for enterprise network pivots and data movement.",
+    },
 ]
 
 SERVICE_OWNERS = {
@@ -76,6 +91,56 @@ SERVICE_OWNERS = {
     "payment_service": "checkout-platform",
     "database": "data-platform",
     "api_gateway": "edge-platform",
+}
+
+IDENTITY_CONTEXT = {
+    "auth_service": {
+        "account": "svc_auth_frontend",
+        "account_type": "service_account",
+        "privilege_level": "medium",
+        "normal_hosts": ["auth_service", "api_gateway"],
+    },
+    "payment_service": {
+        "account": "svc_checkout",
+        "account_type": "service_account",
+        "privilege_level": "high",
+        "normal_hosts": ["payment_service"],
+    },
+    "database": {
+        "account": "svc_data_sync",
+        "account_type": "service_account",
+        "privilege_level": "high",
+        "normal_hosts": ["database", "payment_service"],
+    },
+    "api_gateway": {
+        "account": "deploy_bot",
+        "account_type": "automation",
+        "privilege_level": "medium",
+        "normal_hosts": ["api_gateway"],
+    },
+}
+
+CHANGE_CALENDAR = {
+    "auth_service": {
+        "window": "03:00-03:20Z",
+        "change_type": "auth policy sync",
+        "expected_actor": "svc_auth_frontend",
+    },
+    "payment_service": {
+        "window": "02:30-02:45Z",
+        "change_type": "checkout rollout",
+        "expected_actor": "svc_checkout",
+    },
+    "database": {
+        "window": "04:00-04:30Z",
+        "change_type": "backup and index maintenance",
+        "expected_actor": "svc_data_sync",
+    },
+    "api_gateway": {
+        "window": "03:10-03:25Z",
+        "change_type": "gateway deploy",
+        "expected_actor": "deploy_bot",
+    },
 }
 
 
@@ -483,6 +548,12 @@ class AdaptShieldEnvironment(Environment):
                 result = self._tool_edr_status(node=node)
             elif tool_name == "vuln_lookup":
                 result = self._tool_vuln_lookup(node=node, package=str(params.get("package", "")))
+            elif tool_name == "identity_lookup":
+                result = self._tool_identity_lookup(node=node)
+            elif tool_name == "change_calendar_lookup":
+                result = self._tool_change_calendar_lookup(node=node)
+            elif tool_name == "netflow_lookup":
+                result = self._tool_netflow_lookup(node=node)
             else:
                 result = {
                     "tool": tool_name,
@@ -735,6 +806,144 @@ class AdaptShieldEnvironment(Environment):
             "verified": relevant,
         }
 
+    def _tool_identity_lookup(self, node: str) -> Dict[str, Any]:
+        turn_config = self._turn_config or {}
+        strategy = str(turn_config.get("strategy", "benign"))
+        target = str(turn_config.get("correct_target", "none"))
+        identity = dict(IDENTITY_CONTEXT.get(node, {
+            "account": "unknown",
+            "account_type": "unknown",
+            "privilege_level": "unknown",
+            "normal_hosts": [],
+        }))
+
+        lookup = {
+            "tool": "identity_lookup",
+            "turn": self._turn,
+            "phase": self._phase,
+            "node": node,
+            **identity,
+            "recent_source_host": node,
+            "source_status": "expected",
+            "identity_anomaly": False,
+            "result_summary": "",
+            "confidence": 0.58,
+            "evidence_type": "benign",
+            "verified": False,
+        }
+
+        if node == target and strategy == "lateral_movement":
+            lookup.update({
+                "recent_source_host": "auth_service",
+                "source_status": "unexpected",
+                "identity_anomaly": True,
+                "confidence": 0.84 if self._task_name != "polymorphic-zero-day" else 0.76,
+                "evidence_type": "lateral_movement",
+                "verified": True,
+            })
+        elif node == target and strategy == "supply_chain":
+            lookup.update({
+                "recent_source_host": "external-release-runner",
+                "source_status": "unexpected",
+                "identity_anomaly": True,
+                "confidence": 0.73,
+                "evidence_type": "supply_chain",
+                "verified": True,
+            })
+        elif turn_config.get("is_benign", False):
+            lookup.update({
+                "recent_source_host": identity.get("normal_hosts", [node])[0] if identity.get("normal_hosts") else node,
+                "source_status": "scheduled_change_window",
+                "confidence": 0.69,
+            })
+
+        return lookup
+
+    def _tool_change_calendar_lookup(self, node: str) -> Dict[str, Any]:
+        turn_config = self._turn_config or {}
+        strategy = str(turn_config.get("strategy", "benign"))
+        target = str(turn_config.get("correct_target", "none"))
+        change = dict(CHANGE_CALENDAR.get(node, {
+            "window": "none_scheduled",
+            "change_type": "none",
+            "expected_actor": "unknown",
+        }))
+
+        scheduled = bool(turn_config.get("is_benign", False))
+        confidence = 0.66 if scheduled else 0.74
+        if node == target and strategy == "supply_chain":
+            scheduled = False
+            confidence = 0.87 if self._task_name != "polymorphic-zero-day" else 0.78
+        elif node == target and strategy == "lateral_movement":
+            scheduled = False
+            confidence = 0.72
+
+        return {
+            "tool": "change_calendar_lookup",
+            "turn": self._turn,
+            "phase": self._phase,
+            "node": node,
+            **change,
+            "scheduled": scheduled,
+            "change_status": "scheduled" if scheduled else "no_matching_change",
+            "confidence": confidence,
+            "evidence_type": "benign" if scheduled else ("supply_chain" if node == target and strategy == "supply_chain" else "operational_context"),
+            "verified": scheduled or (node == target and strategy == "supply_chain"),
+        }
+
+    def _tool_netflow_lookup(self, node: str) -> Dict[str, Any]:
+        turn_config = self._turn_config or {}
+        strategy = str(turn_config.get("strategy", "benign"))
+        target = str(turn_config.get("correct_target", "none"))
+        hard_task = self._task_name == "polymorphic-zero-day"
+
+        summary = {
+            "tool": "netflow_lookup",
+            "turn": self._turn,
+            "phase": self._phase,
+            "node": node,
+            "east_west_connections": 12,
+            "outbound_mb": 4,
+            "new_destinations": 0,
+            "traffic_pattern": "baseline",
+            "confidence": 0.57,
+            "evidence_type": "benign",
+            "verified": False,
+        }
+
+        if node == target and strategy == "lateral_movement":
+            summary.update({
+                "east_west_connections": 46 if hard_task else 58,
+                "outbound_mb": 9,
+                "new_destinations": 5 if hard_task else 7,
+                "traffic_pattern": "east_west_fanout",
+                "confidence": 0.79 if hard_task else 0.88,
+                "evidence_type": "lateral_movement",
+                "verified": True,
+            })
+        elif node == target and strategy == "exfiltration":
+            summary.update({
+                "east_west_connections": 18,
+                "outbound_mb": 74 if hard_task else 96,
+                "new_destinations": 2,
+                "traffic_pattern": "outbound_transfer_burst",
+                "confidence": 0.82 if hard_task else 0.91,
+                "evidence_type": "exfiltration",
+                "verified": True,
+            })
+        elif node == target and strategy == "supply_chain":
+            summary.update({
+                "east_west_connections": 16,
+                "outbound_mb": 19,
+                "new_destinations": 1,
+                "traffic_pattern": "post_deploy_callback",
+                "confidence": 0.71,
+                "evidence_type": "supply_chain",
+                "verified": True,
+            })
+
+        return summary
+
     def _record_tool_result(self, result: Dict[str, Any]) -> None:
         turn = int(result.get("turn", self._turn) or self._turn)
         internal = {
@@ -930,6 +1139,24 @@ def _tool_summary(result: Dict[str, Any]) -> str:
         )
     if result.get("tool") == "vuln_lookup":
         return f"risk={result.get('risk')} finding={result.get('finding')}"
+    if result.get("tool") == "identity_lookup":
+        return (
+            f"account={result.get('account')} "
+            f"source={result.get('recent_source_host')} "
+            f"anomaly={result.get('identity_anomaly')}"
+        )
+    if result.get("tool") == "change_calendar_lookup":
+        return (
+            f"scheduled={result.get('scheduled')} "
+            f"window={result.get('window')} "
+            f"change={result.get('change_type')}"
+        )
+    if result.get("tool") == "netflow_lookup":
+        return (
+            f"pattern={result.get('traffic_pattern')} "
+            f"east_west={result.get('east_west_connections')} "
+            f"outbound_mb={result.get('outbound_mb')}"
+        )
     return str(result)[:120]
 
 
@@ -950,16 +1177,28 @@ def _degrade_handoff(
     """Degrade hard-task handoffs after the strategy shift without changing grading."""
     output = dict(phase1_output)
     if (
-        task_name == "polymorphic-zero-day" and
-        turn >= 5 and
+        task_name == "dual-pivot" and
+        turn >= 4 and
         turn_config.get("strategy") == "lateral_movement"
     ):
-        output["confidence"] = min(float(output.get("confidence", 0.5)), 0.42)
+        output["confidence"] = min(float(output.get("confidence", 0.5)), 0.56)
         output["recommended_action"] = "monitor"
         output["handoff_quality"] = "degraded"
         output["handoff_note"] = (
-            "Analyst confidence degraded after attacker pivot; executor must decide "
-            "whether monitor is too passive for lateral movement."
+            "Analyst handoff is less reliable after the pivot; executor should verify "
+            "internal movement before taking payment_service offline."
+        )
+    elif (
+        task_name == "polymorphic-zero-day" and
+        turn >= 4 and
+        turn_config.get("strategy") in {"lateral_movement", "exfiltration", "supply_chain"}
+    ):
+        output["confidence"] = min(float(output.get("confidence", 0.5)), 0.36)
+        output["recommended_action"] = "monitor"
+        output["handoff_quality"] = "degraded"
+        output["handoff_note"] = (
+            "Analyst confidence degraded after attacker pivot; executor must verify "
+            "whether monitor is too passive for the current stage."
         )
     else:
         output["handoff_quality"] = "clean"

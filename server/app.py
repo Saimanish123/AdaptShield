@@ -121,6 +121,33 @@ async def tool_vuln_lookup(payload: Dict[str, Any] = Body(default_factory=dict))
     )
 
 
+@app.post("/tools/identity_lookup", tags=["AdaptShield SOC Tools"])
+async def tool_identity_lookup(payload: Dict[str, Any] = Body(default_factory=dict)) -> Dict[str, Any]:
+    """Inspect account behavior and unusual source-host affinity for a service identity."""
+    return _soc_session(payload).call_tool(
+        "identity_lookup",
+        node=payload.get("node", payload.get("target_node", "unknown")),
+    )
+
+
+@app.post("/tools/change_calendar_lookup", tags=["AdaptShield SOC Tools"])
+async def tool_change_calendar_lookup(payload: Dict[str, Any] = Body(default_factory=dict)) -> Dict[str, Any]:
+    """Check whether a deploy or maintenance window was actually scheduled."""
+    return _soc_session(payload).call_tool(
+        "change_calendar_lookup",
+        node=payload.get("node", payload.get("target_node", "unknown")),
+    )
+
+
+@app.post("/tools/netflow_lookup", tags=["AdaptShield SOC Tools"])
+async def tool_netflow_lookup(payload: Dict[str, Any] = Body(default_factory=dict)) -> Dict[str, Any]:
+    """Inspect east-west and outbound traffic summaries for the active session."""
+    return _soc_session(payload).call_tool(
+        "netflow_lookup",
+        node=payload.get("node", payload.get("target_node", "unknown")),
+    )
+
+
 def _soc_session(payload: Dict[str, Any]) -> AdaptShieldEnvironment:
     session_id = str(payload.get("session_id", ""))
     env = SOC_SESSIONS.get(session_id)

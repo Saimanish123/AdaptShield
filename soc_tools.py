@@ -9,10 +9,10 @@ from typing import Any, Callable, Dict, List, Optional
 
 
 THREAT_TOOL_PLAN = {
-    "brute_force": [("log_search", "auth_service"), ("cmdb_lookup", "auth_service")],
-    "lateral_movement": [("edr_status", "payment_service"), ("log_search", "payment_service")],
-    "exfiltration": [("log_search", "database"), ("edr_status", "database")],
-    "supply_chain": [("vuln_lookup", "api_gateway"), ("log_search", "api_gateway")],
+    "brute_force": [("log_search", "auth_service"), ("cmdb_lookup", "auth_service"), ("identity_lookup", "auth_service")],
+    "lateral_movement": [("edr_status", "payment_service"), ("log_search", "payment_service"), ("identity_lookup", "payment_service"), ("cmdb_lookup", "payment_service")],
+    "exfiltration": [("log_search", "database"), ("edr_status", "database"), ("netflow_lookup", "database"), ("cmdb_lookup", "database")],
+    "supply_chain": [("vuln_lookup", "api_gateway"), ("log_search", "api_gateway"), ("change_calendar_lookup", "api_gateway"), ("cmdb_lookup", "api_gateway")],
     "benign": [("cmdb_lookup", "api_gateway")],
 }
 
@@ -56,10 +56,18 @@ def investigate_local_with_depth(
         return []
     task_name = getattr(obs, "task_name", "")
     if task_name == "direct-triage":
+        if threat == "brute_force":
+            return [env.call_tool("log_search", node="auth_service")]
         return []
 
     threat = classify_from_metrics(getattr(obs, "network_nodes", {}))
     if task_name == "dual-pivot":
+        if threat == "lateral_movement":
+            return [
+                env.call_tool("edr_status", node="payment_service"),
+                env.call_tool("log_search", node="payment_service"),
+                env.call_tool("identity_lookup", node="payment_service"),
+            ]
         tool_name, node = THREAT_TOOL_PLAN.get(threat, THREAT_TOOL_PLAN["benign"])[0]
         return [env.call_tool(tool_name, node=node)]
 
@@ -94,6 +102,8 @@ def investigate_http(
         return []
     task_name = obs.get("task_name")
     if task_name == "direct-triage":
+        if threat == "brute_force":
+            return [call("log_search", "auth_service")]
         return []
 
     threat = classify_from_metrics(obs.get("network_nodes", {}))
@@ -105,6 +115,12 @@ def investigate_http(
         return http_post(env_base_url, path, payload)
 
     if task_name == "dual-pivot":
+        if threat == "lateral_movement":
+            return [
+                call("edr_status", "payment_service"),
+                call("log_search", "payment_service"),
+                call("identity_lookup", "payment_service"),
+            ]
         tool_name, node = THREAT_TOOL_PLAN.get(threat, THREAT_TOOL_PLAN["benign"])[0]
         return [call(tool_name, node)]
 
@@ -141,9 +157,16 @@ def infer_threat_from_tool_results(results: List[Dict[str, Any]]) -> Dict[str, s
 
     if any(result.get("risk") == "critical" for result in results) or "hash mismatch" in text_blob:
         return {"threat_type": "supply_chain", "target_node": "api_gateway", "action": "patch"}
-    if "sequential reads" in text_blob or "compressed archive" in text_blob or "egress exceeds" in text_blob:
+    if "sequential reads" in text_blob or "compressed archive" in text_blob or "egress exceeds" in text_blob or "outbound_transfer_burst" in text_blob:
         return {"threat_type": "exfiltration", "target_node": "database", "action": "honeypot"}
-    if any(result.get("beaconing") for result in results) or "service account" in text_blob or "internal sessions" in text_blob:
+    if (
+        any(result.get("beaconing") for result in results) or
+        "service account" in text_blob or
+        "internal sessions" in text_blob or
+        "identity_anomaly" in text_blob or
+        "source=auth_service" in text_blob or
+        "east_west_fanout" in text_blob
+    ):
         return {"threat_type": "lateral_movement", "target_node": "payment_service", "action": "isolate"}
     if "failed logins" in text_blob or "password spray" in text_blob:
         return {"threat_type": "brute_force", "target_node": "auth_service", "action": "rate_limit"}

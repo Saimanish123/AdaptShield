@@ -74,11 +74,26 @@ ACTION_DISRUPTION = {
 MAX_OPERATIONAL_PENALTY = 0.05
 MAX_MISSION_ADJUSTMENT = 0.04
 
-REQUIRED_TOOL_FUSION = {
+BASE_REQUIRED_TOOL_FUSION = {
     "brute_force":      {"log_search", "cmdb_lookup"},
     "lateral_movement": {"edr_status", "log_search"},
     "exfiltration":     {"log_search", "edr_status"},
     "supply_chain":     {"vuln_lookup", "log_search"},
+}
+
+TASK_REQUIRED_TOOL_FUSION = {
+    "direct-triage": {
+        "brute_force": {"log_search"},
+    },
+    "dual-pivot": {
+        "lateral_movement": {"edr_status", "log_search", "identity_lookup"},
+    },
+    "polymorphic-zero-day": {
+        "brute_force": {"log_search", "cmdb_lookup", "identity_lookup"},
+        "lateral_movement": {"edr_status", "log_search", "identity_lookup", "cmdb_lookup"},
+        "exfiltration": {"log_search", "edr_status", "netflow_lookup", "cmdb_lookup"},
+        "supply_chain": {"vuln_lookup", "log_search", "change_calendar_lookup", "cmdb_lookup"},
+    },
 }
 
 
@@ -237,15 +252,20 @@ def grade_step(
     optimal = correct_action if contextual_countermeasure else OPTIMAL_ACTION.get(strategy, correct_action)
     heavy   = "" if contextual_countermeasure else HEAVY_ACTION.get(strategy, "")
     requires_tool_verification = (
-        task_name == "polymorphic-zero-day" and
         not is_benign and
-        strategy in OPTIMAL_ACTION
+        strategy in OPTIMAL_ACTION and
+        (
+            task_name == "polymorphic-zero-day" or
+            (task_name == "dual-pivot" and strategy == "lateral_movement") or
+            (task_name == "direct-triage" and strategy == "brute_force")
+        )
     )
-    required_tools = REQUIRED_TOOL_FUSION.get(strategy, set())
+    required_tools = _required_tool_fusion(task_name=task_name, strategy=strategy)
     tool_evidence_found, fusion_found = _has_relevant_tool_evidence(
         tool_context=tool_context,
         strategy=strategy,
         target=correct_target,
+        required_tools=required_tools,
     )
     info["tool_verification_required"] = requires_tool_verification
     info["tool_evidence_found"] = tool_evidence_found
@@ -262,7 +282,7 @@ def grade_step(
         result_kind = "unverified"
         info["score_reason"] = (
             f"Unverified correct action: {p2_action} on {p2_target} would help, "
-            "but hard zero-day response requires SOC tool evidence before full credit"
+            f"but {task_name or 'this task'} requires stronger SOC evidence before full credit"
         )
 
     elif p2_action == optimal and p2_target == correct_target:
@@ -419,8 +439,8 @@ def _has_relevant_tool_evidence(
     tool_context: Dict[str, Any],
     strategy: str,
     target: str,
+    required_tools: set[str],
 ) -> Tuple[bool, set[str]]:
-    required_tools = REQUIRED_TOOL_FUSION.get(strategy, set())
     fusion_found = {
         str(result.get("tool", ""))
         for result in tool_context.get("tool_results", []) or []
@@ -439,6 +459,13 @@ def _has_relevant_tool_evidence(
     return has_attack_evidence and required_tools.issubset(fusion_found), fusion_found
 
 
+def _required_tool_fusion(task_name: str, strategy: str) -> set[str]:
+    task_rules = TASK_REQUIRED_TOOL_FUSION.get(task_name, {})
+    if strategy in task_rules:
+        return set(task_rules[strategy])
+    return set(BASE_REQUIRED_TOOL_FUSION.get(strategy, set()))
+
+
 def _clamp(value: float) -> float:
     """Strict bounds: never exactly 0.0 or 1.0."""
     return max(0.01, min(0.99, round(value, 2)))
@@ -452,10 +479,18 @@ def normalize_episode_score(rewards: List[float]) -> float:
     if not rewards:
         return 0.50
 
-    total    = sum(rewards)
-    n        = len(rewards)
-    max_poss = n * (BASE_REWARD + P2_OPTIMAL + P1_TYPE_BONUS + P1_TARGET_BONUS)
-    min_poss = n * (BASE_REWARD + CATASTROPHIC)
+    total = sum(rewards)
+    n = len(rewards)
+
+    # Per-step rewards are clamped before they enter the episode reward list,
+    # so normalization must use the reachable ceiling instead of the raw
+    # unclamped sum of bonuses. Otherwise perfect episodes top out around 0.87.
+    max_step_reward = _clamp(
+        BASE_REWARD + P2_OPTIMAL + P1_TYPE_BONUS + P1_TARGET_BONUS + MAX_MISSION_ADJUSTMENT
+    )
+    min_step_reward = _clamp(BASE_REWARD + CATASTROPHIC)
+    max_poss = n * max_step_reward
+    min_poss = n * min_step_reward
 
     if max_poss == min_poss:
         return 0.50

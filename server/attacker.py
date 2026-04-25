@@ -221,11 +221,18 @@ class AttackerEngine:
             nodes["auth_service"]["request_rate"] = int(340 * mult)
             nodes["auth_service"]["error_rate"]   = min(0.48, 0.18 * mult)
             nodes["auth_service"]["cpu"]          = min(96, int(45 * mult))
+            if self.task_name == "direct-triage":
+                nodes["api_gateway"]["status"] = "elevated"
+                nodes["api_gateway"]["cpu"] = max(nodes["api_gateway"]["cpu"], 54)
             alerts = [
                 f"{alert_prefix} auth_service: {int(120 * mult)} failed login attempts in last 60s from subnet {subnet}",
                 f"{alert_prefix} auth_service: error rate {nodes['auth_service']['error_rate']:.0%}; {stage} activity detected",
                 f"{alert_prefix} payment_service: normal transaction volume",
             ]
+            if self.task_name == "direct-triage":
+                alerts.append(
+                    f"{alert_prefix} api_gateway: elevated CPU overlaps with scheduled analytics cache refresh"
+                )
 
         elif strategy == "lateral_movement":
             account = random.choice(SERVICE_ACCOUNTS)
@@ -250,6 +257,10 @@ class AttackerEngine:
                 alerts.append(
                     f"{alert_prefix} auth_service: residual failed-login noise from earlier credential attack"
                 )
+                if self.task_name == "dual-pivot":
+                    alerts.append(
+                        f"{alert_prefix} payment_service: emergency checkout tuning window is not on the approved change calendar"
+                    )
 
         elif strategy == "exfiltration":
             table = random.choice(DB_TABLES)
@@ -262,6 +273,10 @@ class AttackerEngine:
                 f"{alert_prefix} database: {int(280 * mult)} sequential reads from table '{table}'",
                 f"{alert_prefix} Large compressed archive creation activity on database node",
             ]
+            if self.task_name == "polymorphic-zero-day":
+                alerts.append(
+                    f"{alert_prefix} payment_service: reused workload credential appears on east-west callback path"
+                )
 
         elif strategy == "supply_chain":
             package = random.choice(PACKAGE_NAMES)
@@ -272,6 +287,10 @@ class AttackerEngine:
                 f"{alert_prefix} api_gateway: binary hash mismatch on dependency '{package}'",
                 f"{alert_prefix} Unexpected outbound connection from api_gateway to unrecognized host",
             ]
+            if self.task_name == "polymorphic-zero-day":
+                alerts.append(
+                    f"{alert_prefix} change calendar: no approved gateway deploy window covers this request"
+                )
 
         return nodes, alerts
 
