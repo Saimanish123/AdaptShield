@@ -167,11 +167,17 @@ pip uninstall -y torchaudio || true
 # --no-build-isolation lets any incidental source build (e.g. a stray dep) see system torch.
 pip install --upgrade --no-build-isolation "unsloth[cu124-torch260]"
 
-# Transformers' RUNTIME dependency check (transformers/utils/versions.py) hard-requires
-# `huggingface-hub>=0.34.0,<1.0`. Unsloth's pyproject only requires `>=0.34.0` (no upper bound),
-# so without this line pip is free to upgrade hub to 1.x and `import transformers` then crashes
-# with "ImportError: huggingface-hub>=0.34.0,<1.0 is required ... but found huggingface-hub==1.x".
-pip install --upgrade "huggingface_hub>=0.34,<1.0"
+# Pin transformers to a single known-good version. Why this is necessary:
+#   Unsloth's pyproject allows transformers >=4.51.3 ... <=5.5.0. Pip prefers the latest, so it
+#   picks 5.5.0 by default. But transformers 4.x requires huggingface-hub<1.0 while 5.x requires
+#   hub>=1.5,<2.0 — and unsloth's pyproject does NOT bound hub. So a separate `pip install hub<1.0`
+#   silently breaks transformers 5.x (and a separate `pip install hub>=1.5` silently breaks 4.x).
+#   The only robust fix is to pin transformers and let pip select the matching hub in the SAME
+#   resolution step. We pick 4.57.6 because:
+#     * latest 4.x release on PyPI (so qwen3, etc. are supported);
+#     * not on Unsloth's blocklist (4.57.0/.4/.5 are; 4.57.6 is fine);
+#     * pulls huggingface-hub<1.0 automatically (no separate hub pin needed).
+pip install "transformers==4.57.6"
 
 # Optional helpers we use directly (matplotlib for plots, hf_transfer for fast download/upload).
 pip install --upgrade matplotlib hf_transfer
@@ -186,23 +192,25 @@ print(f"torch ok: {{torch.__version__}} cuda={{torch.version.cuda}}")
 PY
 
 # Smoke-test the actual modules we use. unsloth MUST import before transformers/trl
-# per its own warning. Importing transformers also triggers its runtime version check on
-# huggingface_hub (must be <1.0) and tokenizers, so this catches the ENTIRE class of pin-drift
-# bugs before training ever starts.
+# per its own warning. Importing transformers also triggers its OWN runtime version check on
+# huggingface_hub and tokenizers — so if pip ever picked a transformers/hub combo that don't
+# agree, this `import transformers` line will raise a clear ImportError before training starts.
 python - <<'PY'
-import sys
-import huggingface_hub
-hub_major = int(huggingface_hub.__version__.split(".", 1)[0])
-if hub_major >= 1:
-    print(f"FATAL: huggingface_hub={{huggingface_hub.__version__}} is >=1.0; transformers requires <1.0. Aborting.")
-    sys.exit(2)
 import unsloth  # noqa: F401  (must be first)
-import torch, transformers, trl, peft, datasets, bitsandbytes
+import torch, transformers, trl, peft, datasets, bitsandbytes, huggingface_hub
 print(
     f"unsloth={{unsloth.__version__}} transformers={{transformers.__version__}} "
     f"trl={{trl.__version__}} peft={{peft.__version__}} bnb={{bitsandbytes.__version__}} "
     f"hub={{huggingface_hub.__version__}} datasets={{datasets.__version__}}"
 )
+# Hard-pin guard: if pip silently upgraded transformers off the 4.57.6 pin, fail fast.
+expected_transformers = "4.57.6"
+if transformers.__version__ != expected_transformers:
+    print(
+        f"FATAL: transformers={{transformers.__version__}} but pinned to {{expected_transformers}}. "
+        f"Pip resolution drifted; aborting before training."
+    )
+    import sys; sys.exit(2)
 import train, build_benchmark_table  # noqa: F401
 print("Dependency smoke check passed.")
 PY
