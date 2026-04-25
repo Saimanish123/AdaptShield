@@ -141,31 +141,25 @@ pip uninstall -y torchaudio || true
 # Unsloth ships CUDA/torch-pinned extras (cu124 + torch 2.6.0 + xformers+triton wheels).
 # We deliberately use `cu124-torch260` (NOT the `ampere` variant) because:
 #   * cu124-torch260 pins torch 2.6 + xformers + triton via prebuilt wheels (no source builds).
-#   * cu124-ampere-torch260 ALSO tries to install flash-attn; if its prebuilt wheel URL
-#     doesn't match the image's python/cxx11abi exactly, pip falls through to source-building
-#     flash-attn (10-30 min, frequently fails with "ModuleNotFoundError: No module named 'torch'"
-#     because PEP 517 build isolation hides torch).
-# Unsloth still uses its own xformers/triton attention; flash-attn is an optional bonus.
+#   * cu124-ampere-torch260 ALSO tries to install flash-attn; if its prebuilt wheel URL doesn't
+#     match the image's python/cxx11abi exactly, pip falls through to source-building flash-attn
+#     (10-30 min, often fails with "ModuleNotFoundError: No module named 'torch'" because PEP 517
+#     build isolation hides torch). Unsloth's xformers/triton attention is plenty fast on L4.
+# `unsloth[cu124-torch260]` transitively installs `unsloth[huggingface]` which pins ALL of
+# transformers / trl / peft / accelerate / datasets / bitsandbytes / tokenizers / safetensors
+# to versions Unsloth has tested together. Do NOT add a `--no-deps` override on top of this —
+# previous attempts to do so downgraded peft/trl below what Unsloth requires.
 # --no-build-isolation lets any incidental source build (e.g. a stray dep) see system torch.
 pip install --upgrade --no-build-isolation "unsloth[cu124-torch260]"
 
-# Force a transformers/trl/peft/accelerate combo that is qwen3-aware.
-# (Older unsloth pins were too tight for qwen3 -> "No module named transformers.models.qwen3".)
-pip install --upgrade --no-deps \\
-  "transformers>=4.51,<4.60" \\
-  "trl>=0.12,<0.21" \\
-  "peft>=0.13,<0.20" \\
-  "accelerate>=1.0,<2.0"
+# Transformers' RUNTIME dependency check (transformers/utils/versions.py) hard-requires
+# `huggingface-hub>=0.34.0,<1.0`. Unsloth's pyproject only requires `>=0.34.0` (no upper bound),
+# so without this line pip is free to upgrade hub to 1.x and `import transformers` then crashes
+# with "ImportError: huggingface-hub>=0.34.0,<1.0 is required ... but found huggingface-hub==1.x".
+pip install --upgrade "huggingface_hub>=0.34,<1.0"
 
-# Re-resolve any tokenizers/safetensors deps the --no-deps step skipped.
-pip install \\
-  "tokenizers>=0.20" \\
-  "safetensors>=0.4" \\
-  "datasets>=2.20" \\
-  "sentencepiece>=0.2" \\
-  "protobuf<6" \\
-  "huggingface_hub<2.0" \\
-  matplotlib hf_transfer
+# Optional helpers we use directly (matplotlib for plots, hf_transfer for fast download/upload).
+pip install --upgrade matplotlib hf_transfer
 
 # Hard guard: if torch was upgraded, bitsandbytes will fail at import; fail FAST with a clear log.
 python - <<'PY'
@@ -176,12 +170,24 @@ if not torch.__version__.startswith("2.6."):
 print(f"torch ok: {{torch.__version__}} cuda={{torch.version.cuda}}")
 PY
 
-# Smoke-test the actual modules we use. unsloth MUST import before transformers/trl.
+# Smoke-test the actual modules we use. unsloth MUST import before transformers/trl
+# per its own warning. Importing transformers also triggers its runtime version check on
+# huggingface_hub (must be <1.0) and tokenizers, so this catches the ENTIRE class of pin-drift
+# bugs before training ever starts.
 python - <<'PY'
+import sys
+import huggingface_hub
+hub_major = int(huggingface_hub.__version__.split(".", 1)[0])
+if hub_major >= 1:
+    print(f"FATAL: huggingface_hub={{huggingface_hub.__version__}} is >=1.0; transformers requires <1.0. Aborting.")
+    sys.exit(2)
 import unsloth  # noqa: F401  (must be first)
 import torch, transformers, trl, peft, datasets, bitsandbytes
-print(f"unsloth={{unsloth.__version__}} transformers={{transformers.__version__}} "
-      f"trl={{trl.__version__}} peft={{peft.__version__}} bnb={{bitsandbytes.__version__}}")
+print(
+    f"unsloth={{unsloth.__version__}} transformers={{transformers.__version__}} "
+    f"trl={{trl.__version__}} peft={{peft.__version__}} bnb={{bitsandbytes.__version__}} "
+    f"hub={{huggingface_hub.__version__}} datasets={{datasets.__version__}}"
+)
 import train, train_sft, generate_sft_data  # noqa: F401
 print("Dependency smoke check passed.")
 PY
