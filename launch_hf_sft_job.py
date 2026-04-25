@@ -9,12 +9,66 @@ import subprocess
 from pathlib import Path
 
 from huggingface_hub import HfApi, get_token, run_job
+from huggingface_hub.errors import HfHubHTTPError, RepositoryNotFoundError
 
 from train import MODEL_CHOICES
 
 
 REPO_ROOT = Path(__file__).resolve().parent
 DEFAULT_IMAGE = "pytorch/pytorch:2.6.0-cuda12.4-cudnn9-devel"
+
+
+def repo_namespace(repo_id: str) -> str:
+    if "/" not in repo_id:
+        raise RuntimeError(f"Invalid repo id: {repo_id}. Expected namespace/name.")
+    return repo_id.split("/", 1)[0]
+
+
+def authenticated_username(api: HfApi) -> str | None:
+    try:
+        info = api.whoami()
+    except Exception:
+        return None
+    if isinstance(info, dict):
+        for key in ("name", "fullname", "user"):
+            value = info.get(key)
+            if isinstance(value, str) and value:
+                return value
+    return None
+
+
+def validate_artifact_repo(
+    api: HfApi,
+    repo_id: str,
+    repo_type: str,
+    skip_create: bool,
+    allow_cross_namespace: bool,
+) -> None:
+    owner = repo_namespace(repo_id)
+    username = authenticated_username(api)
+    if username and owner != username:
+        message = (
+            f"Authenticated HF account appears to be '{username}', but artifacts repo is under '{owner}'. "
+            "Use a repo under the same namespace or pass --allow-cross-namespace only if you are certain "
+            "this token has write access there."
+        )
+        if not allow_cross_namespace:
+            raise RuntimeError(message)
+        print(f"Warning: {message}")
+
+    if skip_create:
+        try:
+            api.repo_info(repo_id=repo_id, repo_type=repo_type)
+        except RepositoryNotFoundError as exc:
+            raise RuntimeError(
+                f"Artifacts repo '{repo_id}' ({repo_type}) was not found or is not accessible "
+                "with the current token. Create it manually under the correct namespace or use "
+                "a repo you definitely own before launching the job."
+            ) from exc
+        except HfHubHTTPError as exc:
+            raise RuntimeError(
+                f"Could not verify artifacts repo '{repo_id}' ({repo_type}) before launch: {exc}"
+            ) from exc
 
 
 def infer_repo_url() -> str:
@@ -105,6 +159,7 @@ def main() -> int:
     parser.add_argument("--runs-repo", required=True, help="Artifact repo to upload outputs to, e.g. username/adaptshield-runs")
     parser.add_argument("--runs-repo-type", default="dataset", choices=["dataset", "model"], help="Repo type used to store training artifacts.")
     parser.add_argument("--skip-create", action="store_true", help="Skip repo creation and assume the artifacts repo already exists.")
+    parser.add_argument("--allow-cross-namespace", action="store_true", help="Allow uploads to a repo owned by a different namespace than the authenticated account.")
     parser.add_argument("--repo-url", default=None, help="Git repo URL to clone inside the HF Job. Defaults to remote.origin.url")
     parser.add_argument("--model", default="1.5b", choices=list(MODEL_CHOICES))
     parser.add_argument("--flavor", default="l4x1", help="HF Jobs hardware flavor, e.g. l4x1, a10g-small, a100-large")
@@ -130,6 +185,13 @@ def main() -> int:
     output_subdir = args.output_subdir or f"sft_worldsplit_{args.model.replace('.', '_')}"
 
     api = HfApi(token=token)
+    validate_artifact_repo(
+        api,
+        args.runs_repo,
+        args.runs_repo_type,
+        args.skip_create,
+        args.allow_cross_namespace,
+    )
     if not args.skip_create:
         api.create_repo(repo_id=args.runs_repo, repo_type=args.runs_repo_type, private=True, exist_ok=True)
 
