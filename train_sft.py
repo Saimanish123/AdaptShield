@@ -431,7 +431,11 @@ def train_sft(args: argparse.Namespace) -> None:
         )
     print("Held-out checkpoint reward curve:")
     for row in reward_curve_rows:
-        print(f"  checkpoint={row['checkpoint']:<16} mean_score={row['score']:.3f}")
+        print(
+            f"  checkpoint={row['checkpoint']:<16} "
+            f"in_dist={row['in_distribution_score']:.3f} "
+            f"heldout={row['heldout_score']:.3f}"
+        )
 
 
 def main() -> None:

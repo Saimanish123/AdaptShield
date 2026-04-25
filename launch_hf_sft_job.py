@@ -78,19 +78,20 @@ from huggingface_hub import HfApi
 
 api = HfApi(token=os.environ["HF_TOKEN"])
 repo_id = os.environ["RUNS_REPO"]
+repo_type = os.environ["RUNS_REPO_TYPE"]
 output_dir = {output_path!r}
 summary_path = {summary_path!r}
 subdir = {output_subdir!r}
 
 api.upload_folder(
     repo_id=repo_id,
-    repo_type="dataset",
+    repo_type=repo_type,
     folder_path=output_dir,
     path_in_repo=subdir,
 )
 api.upload_file(
     repo_id=repo_id,
-    repo_type="dataset",
+    repo_type=repo_type,
     path_or_fileobj=summary_path,
     path_in_repo=f"{{subdir}}/adaptshield_sft_worldsplit.summary.json",
 )
@@ -101,12 +102,14 @@ PY
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Launch AdaptShield SFT training on Hugging Face Jobs")
-    parser.add_argument("--runs-repo", required=True, help="Dataset repo to upload outputs to, e.g. username/adaptshield-runs")
+    parser.add_argument("--runs-repo", required=True, help="Artifact repo to upload outputs to, e.g. username/adaptshield-runs")
+    parser.add_argument("--runs-repo-type", default="dataset", choices=["dataset", "model"], help="Repo type used to store training artifacts.")
+    parser.add_argument("--skip-create", action="store_true", help="Skip repo creation and assume the artifacts repo already exists.")
     parser.add_argument("--repo-url", default=None, help="Git repo URL to clone inside the HF Job. Defaults to remote.origin.url")
     parser.add_argument("--model", default="1.5b", choices=list(MODEL_CHOICES))
     parser.add_argument("--flavor", default="l4x1", help="HF Jobs hardware flavor, e.g. l4x1, a10g-small, a100-large")
     parser.add_argument("--timeout", default="6h", help="HF Jobs timeout, e.g. 6h")
-    parser.add_argument("--dataset-episodes", type=int, default=120)
+    parser.add_argument("--dataset-episodes", type=int, default=240)
     parser.add_argument("--max-steps", type=int, default=20)
     parser.add_argument("--epochs", type=float, default=1.0)
     parser.add_argument("--lr", type=float, default=2e-4)
@@ -127,7 +130,8 @@ def main() -> int:
     output_subdir = args.output_subdir or f"sft_worldsplit_{args.model.replace('.', '_')}"
 
     api = HfApi(token=token)
-    api.create_repo(repo_id=args.runs_repo, repo_type="dataset", private=True, exist_ok=True)
+    if not args.skip_create:
+        api.create_repo(repo_id=args.runs_repo, repo_type=args.runs_repo_type, private=True, exist_ok=True)
 
     command = build_command(args=args, repo_url=repo_url, output_subdir=output_subdir)
     job = run_job(
@@ -135,7 +139,10 @@ def main() -> int:
         command=["bash", "-lc", command],
         flavor=args.flavor,
         timeout=args.timeout,
-        env={"RUNS_REPO": args.runs_repo},
+        env={
+            "RUNS_REPO": args.runs_repo,
+            "RUNS_REPO_TYPE": args.runs_repo_type,
+        },
         secrets={"HF_TOKEN": token},
     )
 
