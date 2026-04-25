@@ -924,7 +924,8 @@ def train_grpo(args: argparse.Namespace) -> None:
     print(f"Output: {output_dir}")
     print()
 
-    compute_dtype = torch.float16
+    bf16_supported = bool(getattr(torch.cuda, "is_bf16_supported", lambda: False)())
+    compute_dtype = torch.bfloat16 if bf16_supported else torch.float16
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=model_name,
         max_seq_length=MAX_SEQ_LEN,
@@ -997,8 +998,9 @@ def train_grpo(args: argparse.Namespace) -> None:
         "save_strategy": "no" if args.save_every <= 0 else "steps",
         "report_to": "none",
         "remove_unused_columns": False,
-        "bf16": False,
-        "fp16": True,
+        "bf16": bf16_supported,
+        "fp16": not bf16_supported,
+        "max_grad_norm": 0.0,
         "seed": args.seed,
     }
     if args.save_every > 0:

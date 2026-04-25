@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import shlex
 import subprocess
+import time
 from pathlib import Path
 
 from huggingface_hub import HfApi, get_token, run_job
@@ -16,6 +17,27 @@ from train import MODEL_CHOICES
 
 REPO_ROOT = Path(__file__).resolve().parent
 DEFAULT_IMAGE = "pytorch/pytorch:2.6.0-cuda12.4-cudnn9-devel"
+
+
+def _should_retry_hf(exc: Exception) -> bool:
+    response = getattr(exc, "response", None)
+    status_code = getattr(response, "status_code", None)
+    return status_code == 429 or (isinstance(status_code, int) and 500 <= status_code < 600)
+
+
+def _retry_hf_call(fn, *args, retries: int = 4, delay_s: float = 2.0, **kwargs):
+    last_exc = None
+    for attempt in range(retries):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as exc:
+            last_exc = exc
+            if not _should_retry_hf(exc) or attempt == retries - 1:
+                raise
+            sleep_for = delay_s * (2 ** attempt)
+            print(f"Retrying HF API call after transient error ({exc}); sleeping {sleep_for:.1f}s")
+            time.sleep(sleep_for)
+    raise last_exc  # pragma: no cover
 
 
 def repo_namespace(repo_id: str) -> str:
@@ -58,7 +80,7 @@ def validate_artifact_repo(
 
     if skip_create:
         try:
-            api.repo_info(repo_id=repo_id, repo_type=repo_type)
+            _retry_hf_call(api.repo_info, repo_id=repo_id, repo_type=repo_type)
         except RepositoryNotFoundError as exc:
             raise RuntimeError(
                 f"Artifacts repo '{repo_id}' ({repo_type}) was not found or is not accessible "
@@ -137,6 +159,7 @@ python train_sft.py \\
 
 python - <<'PY'
 import os
+import time
 from huggingface_hub import HfApi
 
 api = HfApi(token=os.environ["HF_TOKEN"])
@@ -146,18 +169,35 @@ output_dir = {output_path!r}
 summary_path = {summary_path!r}
 subdir = {output_subdir!r}
 
-api.upload_folder(
-    repo_id=repo_id,
-    repo_type=repo_type,
-    folder_path=output_dir,
-    path_in_repo=subdir,
-)
-api.upload_file(
-    repo_id=repo_id,
-    repo_type=repo_type,
-    path_or_fileobj=summary_path,
-    path_in_repo=f"{{subdir}}/adaptshield_sft_worldsplit.summary.json",
-)
+last_exc = None
+for attempt in range(4):
+    try:
+        api.upload_folder(
+            repo_id=repo_id,
+            repo_type=repo_type,
+            folder_path=output_dir,
+            path_in_repo=subdir,
+        )
+        api.upload_file(
+            repo_id=repo_id,
+            repo_type=repo_type,
+            path_or_fileobj=summary_path,
+            path_in_repo=f"{{subdir}}/adaptshield_sft_worldsplit.summary.json",
+        )
+        last_exc = None
+        break
+    except Exception as exc:
+        last_exc = exc
+        response = getattr(exc, "response", None)
+        status_code = getattr(response, "status_code", None)
+        if status_code == 429 or (isinstance(status_code, int) and 500 <= status_code < 600):
+            sleep_for = 2 ** attempt
+            print(f"Transient upload error: {{exc}}; retrying in {{sleep_for}}s")
+            time.sleep(sleep_for)
+            continue
+        raise
+if last_exc is not None:
+    raise last_exc
 print("Uploaded artifacts to", repo_id)
 PY
 """
@@ -202,10 +242,11 @@ def main() -> int:
         args.allow_cross_namespace,
     )
     if not args.skip_create:
-        api.create_repo(repo_id=args.runs_repo, repo_type=args.runs_repo_type, private=True, exist_ok=True)
+        _retry_hf_call(api.create_repo, repo_id=args.runs_repo, repo_type=args.runs_repo_type, private=True, exist_ok=True)
 
     command = build_command(args=args, repo_url=repo_url, output_subdir=output_subdir)
-    job = run_job(
+    job = _retry_hf_call(
+        run_job,
         image=DEFAULT_IMAGE,
         command=["bash", "-lc", command],
         flavor=args.flavor,
