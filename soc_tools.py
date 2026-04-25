@@ -55,12 +55,11 @@ def investigate_local_with_depth(
     if not use_tools or getattr(obs, "phase", 1) != 1:
         return []
     task_name = getattr(obs, "task_name", "")
+    threat = classify_from_metrics(getattr(obs, "network_nodes", {}))
     if task_name == "direct-triage":
         if threat == "brute_force":
             return [env.call_tool("log_search", node="auth_service")]
         return []
-
-    threat = classify_from_metrics(getattr(obs, "network_nodes", {}))
     if task_name == "dual-pivot":
         if threat == "lateral_movement":
             return [
@@ -101,18 +100,19 @@ def investigate_http(
     if not use_tools or not session_id or int(obs.get("phase", 1)) != 1:
         return []
     task_name = obs.get("task_name")
-    if task_name == "direct-triage":
-        if threat == "brute_force":
-            return [call("log_search", "auth_service")]
-        return []
-
     threat = classify_from_metrics(obs.get("network_nodes", {}))
-    results: List[Dict[str, Any]] = []
 
     def call(tool_name: str, node: str) -> Dict[str, Any]:
         path = f"/tools/{tool_name}"
         payload = {"session_id": session_id, "node": node}
         return http_post(env_base_url, path, payload)
+
+    if task_name == "direct-triage":
+        if threat == "brute_force":
+            return [call("log_search", "auth_service")]
+        return []
+
+    results: List[Dict[str, Any]] = []
 
     if task_name == "dual-pivot":
         if threat == "lateral_movement":
