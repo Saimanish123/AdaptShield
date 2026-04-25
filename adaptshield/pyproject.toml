@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openenv-adaptshield"
+version = "0.1.0"
+description = "AdaptShield: Two-Phase Adaptive Cybersecurity RL Environment"
+requires-python = ">=3.10"
+dependencies = [
+    "openenv-core[core]>=0.2.2",
+    "fastapi>=0.111.0",
+    "openai>=1.0.0",
+    "uvicorn>=0.24.0",
+    "pydantic>=2.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.0.0",
+]
+
+[project.scripts]
+server = "adaptshield.server.app:main"
+
+[tool.setuptools]
+include-package-data = true
+packages = ["adaptshield", "adaptshield.server"]
+package-dir = { "adaptshield" = ".", "adaptshield.server" = "server" }

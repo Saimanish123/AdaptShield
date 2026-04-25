@@ -1,0 +1,26 @@
+spec_version: 1
+name: adaptshield
+type: space
+runtime: fastapi
+app: server.app:app
+port: 7860
+description: >
+  AdaptShield is a two-phase agentic cybersecurity environment that trains
+  LLMs to adapt to polymorphic adversarial strategies. An agent acts as
+  Threat Analyst (Phase 1) then Tactical Executor (Phase 2), defending a
+  simulated 4-node enterprise network against a scripted attacker that progresses
+  through attack stages and shifts strategy mid-episode. Grading is fully
+  deterministic via Python strategy matching. No LLM-as-judge components.
+tasks:
+  - name: direct-triage
+    difficulty: easy
+    description: Single fixed strategy. Agent learns baseline threat response.
+    max_steps: 5
+  - name: dual-pivot
+    difficulty: medium
+    description: Two strategies alternating every 20 episodes. Detect and adapt.
+    max_steps: 6
+  - name: polymorphic-zero-day
+    difficulty: hard
+    description: All four strategies with mid-episode shift and false-positive noise.
+    max_steps: 8
