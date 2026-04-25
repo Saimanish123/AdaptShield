@@ -849,9 +849,9 @@ def train_policy_gradient(args: argparse.Namespace) -> None:
 
 
 def train_grpo(args: argparse.Namespace) -> None:
+    from unsloth import FastLanguageModel
     from datasets import Dataset
     from trl import GRPOConfig, GRPOTrainer
-    from unsloth import FastLanguageModel
     import torch
 
     random.seed(args.seed)

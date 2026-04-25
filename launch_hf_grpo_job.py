@@ -92,7 +92,8 @@ git clone {shlex.quote(repo_url)} /workspace/adaptshield
 cd /workspace/adaptshield
 python -m pip install -U pip setuptools wheel
 pip install -e .
-pip install matplotlib unsloth trl accelerate bitsandbytes huggingface_hub
+pip uninstall -y torchaudio || true
+pip install matplotlib unsloth trl accelerate bitsandbytes huggingface_hub mergekit
 
 python - <<'PY'
 from huggingface_hub import snapshot_download
@@ -103,13 +104,18 @@ repo_type = {args.source_repo_type!r}
 subdir = {args.source_subdir!r}
 local_dir = snapshot_download(repo_id=repo_id, repo_type=repo_type)
 adapter_path = Path(local_dir) / subdir / "final"
+sft_metrics_path = Path(local_dir) / subdir / "sft_metrics.json"
 if not adapter_path.exists():
     raise RuntimeError(f"SFT adapter path not found: {{adapter_path}}")
+if not sft_metrics_path.exists():
+    raise RuntimeError(f"SFT metrics path not found: {{sft_metrics_path}}")
 print(adapter_path)
 Path("/workspace/adaptshield/.grpo_adapter_path.txt").write_text(str(adapter_path), encoding="utf-8")
+Path("/workspace/adaptshield/.grpo_sft_metrics_path.txt").write_text(str(sft_metrics_path), encoding="utf-8")
 PY
 
 ADAPTER_PATH=$(cat /workspace/adaptshield/.grpo_adapter_path.txt)
+SFT_METRICS_PATH=$(cat /workspace/adaptshield/.grpo_sft_metrics_path.txt)
 
 python train.py \\
   --trainer grpo \\
@@ -133,7 +139,7 @@ python train.py \\
   --plot
 
 python build_benchmark_table.py \\
-  --sft-metrics "$ADAPTER_PATH/../../sft_metrics.json" \\
+  --sft-metrics "$SFT_METRICS_PATH" \\
   --grpo-metrics {output_path}/metrics.json \\
   --output {output_path}/benchmark_table.md
 
