@@ -12,7 +12,7 @@ from pathlib import Path
 from huggingface_hub import HfApi, get_token, run_job
 from huggingface_hub.errors import HfHubHTTPError, RepositoryNotFoundError
 
-from train import MODEL_CHOICES
+from train import MODEL_CHOICES, TASKS
 
 
 REPO_ROOT = Path(__file__).resolve().parent
@@ -256,11 +256,12 @@ SFT_METRICS_PATH=$(cat /workspace/adaptshield/.grpo_sft_metrics_path.txt)
 
 python train.py \\
   --trainer grpo \\
-  --task all \\
+  --task {args.task} \\
   --curriculum \\
   --use-tools \\
   --model {args.model} \\
   --model-path "$ADAPTER_PATH" \\
+  --lr {args.lr} \\
   --prompt-bank-episodes {args.prompt_bank_episodes} \\
   --max-steps {args.max_steps} \\
   --prompt-bank-hard-multiplier {args.prompt_bank_hard_multiplier} \\
@@ -323,6 +324,14 @@ PY
 """
 
 
+def default_output_subdir(task: str, model: str) -> str:
+    model_slug = model.replace(".", "_")
+    if task == "all":
+        return f"grpo_worldsplit_{model_slug}"
+    task_slug = task.replace("-", "_")
+    return f"grpo_{task_slug}_{model_slug}"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Launch AdaptShield GRPO refinement on Hugging Face Jobs")
     parser.add_argument("--runs-repo", required=True)
@@ -333,9 +342,11 @@ def main() -> int:
     parser.add_argument("--source-repo", required=True, help="Repo containing SFT artifacts.")
     parser.add_argument("--source-repo-type", default="model", choices=["dataset", "model"])
     parser.add_argument("--source-subdir", default="sft_worldsplit_1_5b", help="Subdirectory containing the SFT output.")
+    parser.add_argument("--task", default="all", choices=TASKS + ["all"])
     parser.add_argument("--model", default="1.5b", choices=list(MODEL_CHOICES))
     parser.add_argument("--flavor", default="l4x1")
     parser.add_argument("--timeout", default="6h")
+    parser.add_argument("--lr", type=float, default=1e-5)
     parser.add_argument("--prompt-bank-episodes", type=int, default=120)
     parser.add_argument("--max-steps", type=int, default=20)
     parser.add_argument("--prompt-bank-hard-multiplier", type=int, default=3)
@@ -347,8 +358,11 @@ def main() -> int:
     parser.add_argument("--save-every", type=int, default=0)
     parser.add_argument("--eval-episodes", type=int, default=2)
     parser.add_argument("--heldout-seed", type=int, default=314)
-    parser.add_argument("--output-subdir", default="grpo_worldsplit_1_5b")
+    parser.add_argument("--output-subdir", default="")
     args = parser.parse_args()
+
+    if not args.output_subdir:
+        args.output_subdir = default_output_subdir(args.task, args.model)
 
     token = get_token()
     if not token:
