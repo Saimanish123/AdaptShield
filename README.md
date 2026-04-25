@@ -1,5 +1,5 @@
 ---
-title: AdaptShield
+title: Janus (AdaptShield)
 emoji: 🛡️
 colorFrom: blue
 colorTo: red
@@ -11,17 +11,59 @@ tags:
   - security
   - reinforcement-learning
   - cybersecurity
-short_description: Adaptive cybersecurity RL environment for LLM training
+short_description: Two-phase adaptive cybersecurity benchmark for LLM incident response
 ---
 
-# AdaptShield — Two-Phase Adaptive Cybersecurity Environment
+# Janus (AdaptShield) — Two-Phase Adaptive Cybersecurity Benchmark
 
-AdaptShield trains LLMs to adapt to shifting adversarial strategies in
+Janus (AdaptShield) trains LLMs to adapt to shifting adversarial strategies in
 real time — the skill gap that makes current AI security tools fail in
 production. An agent acts as Threat Analyst (Phase 1) then Tactical
 Executor (Phase 2), defending a simulated enterprise network against a
 scripted attacker that progresses through attack stages and shifts
 strategy mid-episode.
+
+## Why This Matters
+
+Most cyber-agent demos stop at shallow alert classification or generic
+tool calling. Janus is built to test something harder: whether an
+LLM can investigate partial evidence, hand off its judgment across roles,
+and choose defenses that balance security with business impact.
+
+## Quick Submission Links
+
+- HF Space: `TODO`
+- Colab notebook: `TODO`
+- Artifacts / model repo: `TODO`
+- Demo video: `TODO`
+- Blog / writeup: `TODO`
+
+## Architecture
+
+![AdaptShield architecture](assets/architecture_overview.svg)
+
+At a high level:
+
+- the environment samples a mission profile, world-family template, and
+  latent operational mode
+- the Threat Analyst investigates raw enterprise evidence through SOC
+  tools and produces a structured handoff
+- the Tactical Executor sees only that handoff and must choose the
+  mitigation under operational tradeoffs
+- the grader scores security correctness, business impact, dependency
+  blast radius, and mission alignment
+
+## Training Pipeline
+
+![AdaptShield training pipeline](assets/training_pipeline.svg)
+
+The training story is:
+
+- generate SFT demonstrations directly from the environment
+- train a compact policy with LoRA SFT
+- evaluate on both train-family and held-out-family incident worlds
+- refine with GRPO starting from the SFT adapter
+- package curves, benchmark tables, and replay artifacts for submission
 
 ## Environment Description
 

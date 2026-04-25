@@ -118,6 +118,13 @@ set -euo pipefail
 export TRANSFORMERS_NO_ADVISORY_WARNINGS=1
 export PYTHONWARNINGS="ignore::FutureWarning"
 export HF_HUB_ENABLE_HF_TRANSFER=1
+export PIP_DISABLE_PIP_VERSION_CHECK=1
+
+python - <<'PY'
+import torch
+print(f"baseline torch={{torch.__version__}}, cuda={{torch.version.cuda}}")
+PY
+
 apt-get update -qq
 apt-get install -y -qq git
 if [ ! -d /workspace/adaptshield/.git ]; then
@@ -125,24 +132,48 @@ if [ ! -d /workspace/adaptshield/.git ]; then
   git clone --depth 1 {shlex.quote(repo_url)} /workspace/adaptshield
 fi
 cd /workspace/adaptshield
-python -m pip install -U pip setuptools wheel
+python -m pip install --upgrade pip wheel setuptools
 pip install -e .
 pip uninstall -y torchaudio || true
+
+# Unsloth ships CUDA/torch-pinned extras (cu124 + torch 2.6.0 + Ada/Ampere wheels for xformers+triton).
+# This is the ONLY install path that does NOT upgrade torch to 2.11+cu13 (which breaks bitsandbytes).
+pip install --upgrade "unsloth[cu124-ampere-torch260]"
+
+# Force a transformers/trl/peft/accelerate combo that is qwen3-aware.
+# (Older unsloth pins were too tight for qwen3 -> "No module named transformers.models.qwen3".)
+pip install --upgrade --no-deps \\
+  "transformers>=4.51,<4.60" \\
+  "trl>=0.12,<0.21" \\
+  "peft>=0.13,<0.20" \\
+  "accelerate>=1.0,<2.0"
+
+# Re-resolve any tokenizers/safetensors deps the --no-deps step skipped.
 pip install \\
-  matplotlib \\
-  "unsloth>=2024.10.7" \\
-  "trl>=0.11.0,<0.13.0" \\
-  "accelerate>=0.34.0" \\
-  "peft>=0.13.0" \\
-  "transformers>=4.45.0,<4.50.0" \\
-  "datasets>=2.20.0" \\
-  bitsandbytes \\
-  huggingface_hub \\
-  hf_transfer
+  "tokenizers>=0.20" \\
+  "safetensors>=0.4" \\
+  "datasets>=2.20" \\
+  "sentencepiece>=0.2" \\
+  "protobuf<6" \\
+  "huggingface_hub<2.0" \\
+  matplotlib hf_transfer
+
+# Hard guard: if torch was upgraded, bitsandbytes will fail at import; fail FAST with a clear log.
 python - <<'PY'
-import importlib
-for name in ["torch", "transformers", "trl", "unsloth", "peft", "datasets", "train", "train_sft", "generate_sft_data"]:
-    importlib.import_module(name)
+import sys, torch
+if not torch.__version__.startswith("2.6."):
+    print(f"FATAL: torch was upgraded to {{torch.__version__}}; aborting before training.")
+    sys.exit(2)
+print(f"torch ok: {{torch.__version__}} cuda={{torch.version.cuda}}")
+PY
+
+# Smoke-test the actual modules we use. unsloth MUST import before transformers/trl.
+python - <<'PY'
+import unsloth  # noqa: F401  (must be first)
+import torch, transformers, trl, peft, datasets, bitsandbytes
+print(f"unsloth={{unsloth.__version__}} transformers={{transformers.__version__}} "
+      f"trl={{trl.__version__}} peft={{peft.__version__}} bnb={{bitsandbytes.__version__}}")
+import train, train_sft, generate_sft_data  # noqa: F401
 print("Dependency smoke check passed.")
 PY
 

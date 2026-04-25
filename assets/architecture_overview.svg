@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760">
+  <defs>
+    <style>
+      text { font-family: Arial, sans-serif; fill: #17324d; }
+      .title { font-size: 30px; font-weight: 700; }
+      .subtitle { font-size: 16px; fill: #45627f; }
+      .section { font-size: 20px; font-weight: 700; }
+      .body { font-size: 15px; }
+      .note { font-size: 13px; fill: #5c7792; }
+      .border { stroke: #274d7d; stroke-width: 2; }
+      .arrow { stroke: #274d7d; stroke-width: 3; fill: none; marker-end: url(#arrowhead); }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <polygon points="0,0 10,4 0,8" fill="#274d7d"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1200" height="760" fill="#f7f9fc"/>
+  <text x="60" y="60" class="title">Janus (AdaptShield) Architecture</text>
+  <text x="60" y="92" class="subtitle">Two-phase enterprise cyber benchmark: partial observability, tool-mediated investigation, adaptive attacker, and mission-aware grading.</text>
+
+  <rect x="60" y="140" width="1080" height="220" rx="20" ry="20" fill="#ffffff" class="border"/>
+  <text x="90" y="182" class="section">Environment Layer</text>
+
+  <rect x="90" y="210" width="250" height="120" rx="18" ry="18" fill="#e8f3ff" class="border"/>
+  <text x="112" y="242" class="section">Enterprise World</text>
+  <text x="112" y="272" class="body">4-node topology</text>
+  <text x="112" y="296" class="body">mission profile</text>
+  <text x="112" y="320" class="body">train vs held-out family</text>
+
+  <rect x="390" y="210" width="250" height="120" rx="18" ry="18" fill="#eef9f0" class="border"/>
+  <text x="412" y="242" class="section">SOC Tool Surface</text>
+  <text x="412" y="272" class="body">log_search, edr_status</text>
+  <text x="412" y="296" class="body">cmdb, vuln, identity</text>
+  <text x="412" y="320" class="body">change_calendar, netflow</text>
+
+  <rect x="690" y="210" width="250" height="120" rx="18" ry="18" fill="#fff2e8" class="border"/>
+  <text x="712" y="242" class="section">Adaptive Attacker</text>
+  <text x="712" y="272" class="body">recon -&gt; exploit -&gt; exfiltration</text>
+  <text x="712" y="296" class="body">mid-episode pivots</text>
+  <text x="712" y="320" class="body">hard-task polymorphism</text>
+
+  <rect x="60" y="410" width="1080" height="280" rx="20" ry="20" fill="#ffffff" class="border"/>
+  <text x="90" y="452" class="section">Agent and Grader Layer</text>
+
+  <rect x="90" y="485" width="280" height="160" rx="18" ry="18" fill="#fff7e8" class="border"/>
+  <text x="112" y="518" class="section">Phase 1: Threat Analyst</text>
+  <text x="112" y="548" class="body">sees raw alerts and state</text>
+  <text x="112" y="572" class="body">investigates with SOC tools</text>
+  <text x="112" y="596" class="body">predicts threat, target, action</text>
+  <text x="112" y="620" class="note">This phase turns noisy evidence into a structured handoff.</text>
+
+  <rect x="460" y="485" width="280" height="160" rx="18" ry="18" fill="#ffeceb" class="border"/>
+  <text x="482" y="518" class="section">Phase 2: Tactical Executor</text>
+  <text x="482" y="548" class="body">blind to raw network state</text>
+  <text x="482" y="572" class="body">receives analyst handoff only</text>
+  <text x="482" y="596" class="body">chooses mitigation under constraints</text>
+  <text x="482" y="620" class="note">This phase tests communication quality and action judgment.</text>
+
+  <rect x="830" y="485" width="280" height="160" rx="18" ry="18" fill="#f1edff" class="border"/>
+  <text x="852" y="518" class="section">Mission-Aware Grader</text>
+  <text x="852" y="548" class="body">security correctness</text>
+  <text x="852" y="572" class="body">business and availability impact</text>
+  <text x="852" y="596" class="body">dependency blast radius</text>
+  <text x="852" y="620" class="note">Produces dense reward and replay-friendly score breakdowns.</text>
+
+  <path d="M215 330 L215 485" class="arrow"/>
+  <path d="M515 330 L230 470" class="arrow"/>
+  <path d="M815 330 L600 470" class="arrow"/>
+  <path d="M370 565 L460 565" class="arrow"/>
+  <path d="M740 565 L830 565" class="arrow"/>
+
+  <text x="236" y="395" class="note">observations</text>
+  <text x="388" y="447" class="note">tool evidence</text>
+  <text x="705" y="447" class="note">hidden attacker state</text>
+  <text x="392" y="548" class="note">structured handoff</text>
+  <text x="760" y="548" class="note">score + reward</text>
+</svg>
