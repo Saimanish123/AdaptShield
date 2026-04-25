@@ -274,7 +274,7 @@ def _current_reference(env: AdaptShieldEnvironment) -> Dict[str, Any]:
     }
 
 
-def _align_trainable_dtypes(model: Any) -> str:
+def _align_trainable_dtypes(model: Any, target_dtype: Any | None = None) -> str:
     """Keep LoRA/trainable params on the same compute dtype as the main model.
 
     Some adapter checkpoints reload trainable LoRA weights as float32, while
@@ -283,11 +283,11 @@ def _align_trainable_dtypes(model: Any) -> str:
     """
     import torch
 
-    target_dtype = None
-    for param in model.parameters():
-        if param.is_floating_point() and not param.requires_grad:
-            target_dtype = param.dtype
-            break
+    if target_dtype is None:
+        for param in model.parameters():
+            if param.is_floating_point() and not param.requires_grad:
+                target_dtype = param.dtype
+                break
     if target_dtype is None:
         for param in model.parameters():
             if param.is_floating_point():
@@ -924,11 +924,12 @@ def train_grpo(args: argparse.Namespace) -> None:
     print(f"Output: {output_dir}")
     print()
 
+    compute_dtype = torch.float16
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=model_name,
         max_seq_length=MAX_SEQ_LEN,
         load_in_4bit=True,
-        dtype=None,
+        dtype=compute_dtype,
     )
     if not _looks_like_adapter_path(model_name):
         model = FastLanguageModel.get_peft_model(
@@ -946,8 +947,23 @@ def train_grpo(args: argparse.Namespace) -> None:
         )
     if getattr(tokenizer, "pad_token", None) is None:
         tokenizer.pad_token = tokenizer.eos_token
+    if getattr(model, "config", None) is not None:
+        try:
+            model.config.use_return_dict = True
+        except Exception:
+            pass
+        try:
+            model.config.use_cache = False
+        except Exception:
+            pass
+    if getattr(model, "generation_config", None) is not None:
+        try:
+            model.generation_config.pad_token_id = tokenizer.pad_token_id
+        except Exception:
+            pass
     FastLanguageModel.for_training(model)
-    dtype_summary = _align_trainable_dtypes(model)
+    dtype_summary = _align_trainable_dtypes(model, target_dtype=compute_dtype)
+    print(f"Using GRPO compute dtype: {compute_dtype}")
     print(f"Aligned trainable parameter dtypes: {dtype_summary}")
 
     prompt_bank = build_prompt_bank(
@@ -968,7 +984,6 @@ def train_grpo(args: argparse.Namespace) -> None:
     dataset = Dataset.from_list(prompt_bank)
     reward_fn = build_grpo_reward_fn()
 
-    bf16_supported = bool(getattr(torch.cuda, "is_bf16_supported", lambda: False)())
     config_kwargs = {
         "output_dir": str(output_dir),
         "learning_rate": args.lr,
@@ -979,14 +994,15 @@ def train_grpo(args: argparse.Namespace) -> None:
         "max_completion_length": 256,
         "num_generations": args.num_generations,
         "logging_steps": 1,
-        "save_steps": args.save_every,
-        "save_strategy": "steps",
+        "save_strategy": "no" if args.save_every <= 0 else "steps",
         "report_to": "none",
         "remove_unused_columns": False,
-        "bf16": bf16_supported,
-        "fp16": not bf16_supported,
+        "bf16": False,
+        "fp16": True,
         "seed": args.seed,
     }
+    if args.save_every > 0:
+        config_kwargs["save_steps"] = args.save_every
     grpo_config = GRPOConfig(**_filter_supported_kwargs(GRPOConfig, config_kwargs))
 
     trainer_kwargs = {

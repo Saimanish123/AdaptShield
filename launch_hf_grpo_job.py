@@ -155,12 +155,14 @@ python train.py \\
   --model {args.model} \\
   --model-path "$ADAPTER_PATH" \\
   --prompt-bank-episodes {args.prompt_bank_episodes} \\
+  --max-steps {args.max_steps} \\
   --prompt-bank-hard-multiplier {args.prompt_bank_hard_multiplier} \\
   --prompt-bank-borderline-bonus {args.prompt_bank_borderline_bonus} \\
   --grpo-epochs {args.grpo_epochs} \\
   --num-generations {args.num_generations} \\
   --per-device-batch-size {args.per_device_batch_size} \\
   --gradient-accumulation-steps {args.gradient_accumulation_steps} \\
+  --save-every {args.save_every} \\
   --eval-episodes {args.eval_episodes} \\
   --train-world-split train \\
   --heldout-world-split eval \\
@@ -210,12 +212,14 @@ def main() -> int:
     parser.add_argument("--flavor", default="l4x1")
     parser.add_argument("--timeout", default="6h")
     parser.add_argument("--prompt-bank-episodes", type=int, default=120)
+    parser.add_argument("--max-steps", type=int, default=20)
     parser.add_argument("--prompt-bank-hard-multiplier", type=int, default=3)
     parser.add_argument("--prompt-bank-borderline-bonus", type=int, default=2)
     parser.add_argument("--grpo-epochs", type=int, default=1)
     parser.add_argument("--num-generations", type=int, default=2)
     parser.add_argument("--per-device-batch-size", type=int, default=1)
     parser.add_argument("--gradient-accumulation-steps", type=int, default=4)
+    parser.add_argument("--save-every", type=int, default=0)
     parser.add_argument("--eval-episodes", type=int, default=2)
     parser.add_argument("--heldout-seed", type=int, default=314)
     parser.add_argument("--output-subdir", default="grpo_worldsplit_1_5b")
