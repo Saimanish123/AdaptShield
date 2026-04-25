@@ -15,7 +15,9 @@ from train import (
     LORA_RANK,
     MAX_SEQ_LEN,
     MODEL_CHOICES,
+    _align_trainable_dtypes,
     _filter_supported_kwargs,
+    _normalize_generation_config,
     evaluate_model_suite,
     run_model_episode,
 )
@@ -217,6 +219,8 @@ def evaluate_saved_checkpoints(
             load_in_4bit=True,
             dtype=None,
         )
+        _normalize_generation_config(model)
+        _align_trainable_dtypes(model)
         in_distribution_rows = evaluate_suite_with_seed(
             model=model,
             tokenizer=tokenizer,
@@ -307,6 +311,8 @@ def train_sft(args: argparse.Namespace) -> None:
     )
     if getattr(tokenizer, "pad_token", None) is None:
         tokenizer.pad_token = tokenizer.eos_token
+    _normalize_generation_config(model)
+    _align_trainable_dtypes(model)
 
     prepared_rows = [{"text": render_example(row, tokenizer), **row} for row in rows]
     dataset = Dataset.from_list(prepared_rows)

@@ -92,13 +92,22 @@ def build_command(args: argparse.Namespace, repo_url: str, output_subdir: str) -
 
     return f"""
 set -euo pipefail
+export TRANSFORMERS_NO_ADVISORY_WARNINGS=1
+export PYTHONWARNINGS="ignore::FutureWarning"
 apt-get update
 apt-get install -y git
 git clone {shlex.quote(repo_url)} /workspace/adaptshield
 cd /workspace/adaptshield
 python -m pip install -U pip setuptools wheel
 pip install -e .
+pip uninstall -y torchaudio || true
 pip install matplotlib unsloth trl accelerate bitsandbytes huggingface_hub
+python - <<'PY'
+import importlib
+for name in ["torch", "transformers", "trl", "unsloth", "peft", "train", "train_sft", "generate_sft_data"]:
+    importlib.import_module(name)
+print("Dependency smoke check passed.")
+PY
 
 python generate_sft_data.py \\
   --task all \\

@@ -245,6 +245,7 @@ def generate_response(model: Any, tokenizer: Any, messages: List[Dict[str, str]]
     inputs = tokenizer(prompt, return_tensors="pt").to("cuda")
 
     with torch.no_grad():
+        _normalize_generation_config(model)
         output_ids = model.generate(
             **inputs,
             max_new_tokens=220,
@@ -271,6 +272,55 @@ def _current_reference(env: AdaptShieldEnvironment) -> Dict[str, Any]:
         "stage": str(turn_config.get("attack_stage", getattr(env._attacker, "current_stage", lambda: "recon")())),
         "is_benign": is_benign,
     }
+
+
+def _align_trainable_dtypes(model: Any) -> str:
+    """Keep LoRA/trainable params on the same compute dtype as the main model.
+
+    Some adapter checkpoints reload trainable LoRA weights as float32, while
+    Unsloth GRPO kernels run activations in float16/bfloat16. That mismatch
+    trips fast_lora matmuls at runtime. We fix only trainable floating params.
+    """
+    import torch
+
+    target_dtype = None
+    for param in model.parameters():
+        if param.is_floating_point() and not param.requires_grad:
+            target_dtype = param.dtype
+            break
+    if target_dtype is None:
+        for param in model.parameters():
+            if param.is_floating_point():
+                target_dtype = param.dtype
+                break
+    if target_dtype is None:
+        return "no-floating-params"
+
+    converted = 0
+    for param in model.parameters():
+        if param.requires_grad and param.is_floating_point() and param.dtype != target_dtype:
+            param.data = param.data.to(target_dtype)
+            converted += 1
+
+    for buffer_name, buffer in model.named_buffers():
+        if "lora_" in buffer_name and buffer.is_floating_point() and buffer.dtype != target_dtype:
+            buffer.data = buffer.data.to(target_dtype)
+
+    if getattr(model, "generation_config", None) is not None:
+        _normalize_generation_config(model)
+
+    return f"{target_dtype} ({converted} trainable params aligned)"
+
+
+def _normalize_generation_config(model: Any) -> None:
+    generation_config = getattr(model, "generation_config", None)
+    if generation_config is None:
+        return
+    for field in ("max_length",):
+        try:
+            setattr(generation_config, field, None)
+        except Exception:
+            continue
 
 
 def _teacher_payload(phase: int, reference: Dict[str, Any]) -> Dict[str, Any]:
@@ -717,6 +767,8 @@ def train_policy_gradient(args: argparse.Namespace) -> None:
             random_state=args.seed,
         )
     FastLanguageModel.for_training(model)
+    dtype_summary = _align_trainable_dtypes(model)
+    print(f"Aligned trainable parameter dtypes: {dtype_summary}")
     optimizer = AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
 
     rows: List[Dict[str, Any]] = []
@@ -895,6 +947,8 @@ def train_grpo(args: argparse.Namespace) -> None:
     if getattr(tokenizer, "pad_token", None) is None:
         tokenizer.pad_token = tokenizer.eos_token
     FastLanguageModel.for_training(model)
+    dtype_summary = _align_trainable_dtypes(model)
+    print(f"Aligned trainable parameter dtypes: {dtype_summary}")
 
     prompt_bank = build_prompt_bank(
         tokenizer=tokenizer,

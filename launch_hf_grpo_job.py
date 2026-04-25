@@ -81,11 +81,35 @@ def validate_repo_access(
             raise RuntimeError(f"Could not verify repo '{repo_id}' ({repo_type}): {exc}") from exc
 
 
+def validate_source_artifacts(
+    api: HfApi,
+    repo_id: str,
+    repo_type: str,
+    subdir: str,
+) -> None:
+    try:
+        files = set(api.list_repo_files(repo_id=repo_id, repo_type=repo_type))
+    except Exception as exc:
+        raise RuntimeError(f"Could not list files for source repo '{repo_id}' ({repo_type}): {exc}") from exc
+
+    required = {
+        f"{subdir}/final/adapter_config.json",
+        f"{subdir}/sft_metrics.json",
+    }
+    missing = sorted(path for path in required if path not in files)
+    if missing:
+        raise RuntimeError(
+            "Source repo is missing required SFT artifacts: " + ", ".join(missing)
+        )
+
+
 def build_command(args: argparse.Namespace, repo_url: str, output_subdir: str) -> str:
     output_path = f"/workspace/adaptshield/checkpoints/{output_subdir}"
 
     return f"""
 set -euo pipefail
+export TRANSFORMERS_NO_ADVISORY_WARNINGS=1
+export PYTHONWARNINGS="ignore::FutureWarning"
 apt-get update
 apt-get install -y git
 git clone {shlex.quote(repo_url)} /workspace/adaptshield
@@ -94,6 +118,12 @@ python -m pip install -U pip setuptools wheel
 pip install -e .
 pip uninstall -y torchaudio || true
 pip install matplotlib unsloth trl accelerate bitsandbytes huggingface_hub mergekit
+python - <<'PY'
+import importlib
+for name in ["torch", "transformers", "trl", "unsloth", "peft", "mergekit", "train", "build_benchmark_table"]:
+    importlib.import_module(name)
+print("Dependency smoke check passed.")
+PY
 
 python - <<'PY'
 from huggingface_hub import snapshot_download
@@ -138,10 +168,12 @@ python train.py \\
   --output {output_path} \\
   --plot
 
-python build_benchmark_table.py \\
+if ! python build_benchmark_table.py \\
   --sft-metrics "$SFT_METRICS_PATH" \\
   --grpo-metrics {output_path}/metrics.json \\
-  --output {output_path}/benchmark_table.md
+  --output {output_path}/benchmark_table.md; then
+  echo "Benchmark table generation failed; continuing with core artifacts."
+fi
 
 python - <<'PY'
 import os
@@ -197,6 +229,7 @@ def main() -> int:
     api = HfApi(token=token)
     validate_repo_access(api, args.runs_repo, args.runs_repo_type, args.skip_create, args.allow_cross_namespace)
     validate_repo_access(api, args.source_repo, args.source_repo_type, True, args.allow_cross_namespace)
+    validate_source_artifacts(api, args.source_repo, args.source_repo_type, args.source_subdir)
     if not args.skip_create:
         api.create_repo(repo_id=args.runs_repo, repo_type=args.runs_repo_type, private=True, exist_ok=True)
 
