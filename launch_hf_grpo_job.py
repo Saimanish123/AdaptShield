@@ -148,12 +148,21 @@ if [ ! -d /workspace/adaptshield/.git ]; then
 fi
 cd /workspace/adaptshield
 python -m pip install --upgrade pip wheel setuptools
+# ninja+packaging let any source-built dep that DOES sneak in compile cleanly.
+pip install --upgrade ninja packaging
 pip install -e .
 pip uninstall -y torchaudio || true
 
-# Unsloth ships CUDA/torch-pinned extras (cu124 + torch 2.6.0 + Ada/Ampere wheels for xformers+triton).
-# This is the ONLY install path that does NOT upgrade torch to 2.11+cu13 (which breaks bitsandbytes).
-pip install --upgrade "unsloth[cu124-ampere-torch260]"
+# Unsloth ships CUDA/torch-pinned extras (cu124 + torch 2.6.0 + xformers+triton wheels).
+# We deliberately use `cu124-torch260` (NOT the `ampere` variant) because:
+#   * cu124-torch260 pins torch 2.6 + xformers + triton via prebuilt wheels (no source builds).
+#   * cu124-ampere-torch260 ALSO tries to install flash-attn; if its prebuilt wheel URL
+#     doesn't match the image's python/cxx11abi exactly, pip falls through to source-building
+#     flash-attn (10-30 min, frequently fails with "ModuleNotFoundError: No module named 'torch'"
+#     because PEP 517 build isolation hides torch).
+# Unsloth still uses its own xformers/triton attention; flash-attn is an optional bonus.
+# --no-build-isolation lets any incidental source build (e.g. a stray dep) see system torch.
+pip install --upgrade --no-build-isolation "unsloth[cu124-torch260]"
 
 # Force a transformers/trl/peft/accelerate combo that is qwen3-aware.
 # (Older unsloth pins were too tight for qwen3 -> "No module named transformers.models.qwen3".)
