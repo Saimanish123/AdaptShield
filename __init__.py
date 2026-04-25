@@ -6,8 +6,8 @@
 
 """AdaptShield environment package."""
 
-from .client import AdaptshieldEnv
-from .models import (
+from client import AdaptshieldEnv
+from models import (
     AdaptShieldAction,
     AdaptShieldObservation,
     AdaptshieldAction,

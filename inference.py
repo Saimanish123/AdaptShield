@@ -25,7 +25,8 @@ import urllib.error
 
 from openai import OpenAI
 
-from adaptshield import AdaptshieldEnv, AdaptShieldAction
+from client import AdaptshieldEnv
+from models import AdaptShieldAction
 from soc_tools import attach_tool_results, investigate_http, summarize_tool_results
 
 # ── Configuration — read from env, NEVER hardcode ──────────────────────────

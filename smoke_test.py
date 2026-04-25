@@ -13,16 +13,13 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parent
-PACKAGE_ROOT = REPO_ROOT / "adaptshield"
 
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
-if str(PACKAGE_ROOT) not in sys.path:
-    sys.path.insert(0, str(PACKAGE_ROOT))
 
-import adaptshield
+import __init__ as adaptshield
 import server.app as server_app
-from adaptshield.models import AdaptShieldAction
+from models import AdaptShieldAction
 from server.adaptshield_environment import AdaptShieldEnvironment
 
 

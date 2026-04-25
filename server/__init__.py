@@ -6,6 +6,6 @@
 
 """Adaptshield environment server components."""
 
-from .adaptshield_environment import AdaptShieldEnvironment
+from server.adaptshield_environment import AdaptShieldEnvironment
 
 __all__ = ["AdaptShieldEnvironment"]

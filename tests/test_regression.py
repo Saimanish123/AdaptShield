@@ -11,11 +11,11 @@ if str(REPO_ROOT) not in sys.path:
 if str(PACKAGE_ROOT) not in sys.path:
     sys.path.insert(0, str(PACKAGE_ROOT))
 
-import adaptshield
+import __init__ as adaptshield
 import server.app as server_app
 import train as train_module
-from adaptshield.client import AdaptshieldEnv
-from adaptshield.models import AdaptShieldAction
+from client import AdaptshieldEnv
+from models import AdaptShieldAction
 from server.adaptshield_environment import AdaptShieldEnvironment
 
 
