@@ -242,7 +242,16 @@ def generate_response(model: Any, tokenizer: Any, messages: List[Dict[str, str]]
     import torch
 
     prompt = render_messages(messages, tokenizer=tokenizer)
-    inputs = tokenizer(prompt, return_tensors="pt").to("cuda")
+    device = getattr(model, "device", None)
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    inputs = tokenizer(prompt, return_tensors="pt").to(device)
+
+    pad_token_id = (
+        tokenizer.pad_token_id
+        if getattr(tokenizer, "pad_token_id", None) is not None
+        else tokenizer.eos_token_id
+    )
 
     with torch.no_grad():
         _normalize_generation_config(model)
@@ -251,7 +260,7 @@ def generate_response(model: Any, tokenizer: Any, messages: List[Dict[str, str]]
             max_new_tokens=220,
             temperature=0.7,
             do_sample=True,
-            pad_token_id=tokenizer.eos_token_id,
+            pad_token_id=pad_token_id,
         )
 
     new_ids = output_ids[0][inputs["input_ids"].shape[1]:]
@@ -321,6 +330,57 @@ def _normalize_generation_config(model: Any) -> None:
             setattr(generation_config, field, None)
         except Exception:
             continue
+
+
+def _load_training_model_and_tokenizer(
+    model_name: str,
+    model_key: str,
+    max_seq_length: int,
+    compute_dtype: Any,
+    seed: int,
+):
+    from unsloth import FastLanguageModel
+
+    adapter_path = model_name if _looks_like_adapter_path(model_name) else ""
+    base_model_name = MODEL_CHOICES[model_key] if adapter_path else model_name
+    model, tokenizer = FastLanguageModel.from_pretrained(
+        model_name=base_model_name,
+        max_seq_length=max_seq_length,
+        load_in_4bit=True,
+        dtype=compute_dtype,
+    )
+
+    if adapter_path:
+        from peft import PeftModel
+
+        model = PeftModel.from_pretrained(
+            model,
+            adapter_path,
+            is_trainable=True,
+            autocast_adapter_dtype=False,
+        )
+        try:
+            from transformers import AutoTokenizer
+
+            tokenizer = AutoTokenizer.from_pretrained(adapter_path, trust_remote_code=True)
+        except Exception:
+            pass
+    else:
+        model = FastLanguageModel.get_peft_model(
+            model,
+            r=LORA_RANK,
+            target_modules=[
+                "q_proj", "k_proj", "v_proj", "o_proj",
+                "gate_proj", "up_proj", "down_proj",
+            ],
+            lora_alpha=LORA_RANK * 2,
+            lora_dropout=0.0,
+            bias="none",
+            use_gradient_checkpointing="unsloth",
+            random_state=seed,
+        )
+
+    return model, tokenizer
 
 
 def _teacher_payload(phase: int, reference: Dict[str, Any]) -> Dict[str, Any]:
@@ -726,7 +786,6 @@ def run_model_episode(
 
 
 def train_policy_gradient(args: argparse.Namespace) -> None:
-    from unsloth import FastLanguageModel
     import torch
     from torch.optim import AdamW
 
@@ -746,26 +805,14 @@ def train_policy_gradient(args: argparse.Namespace) -> None:
     print(f"Output: {output_dir}")
     print()
 
-    model, tokenizer = FastLanguageModel.from_pretrained(
+    model, tokenizer = _load_training_model_and_tokenizer(
         model_name=model_name,
+        model_key=args.model,
         max_seq_length=MAX_SEQ_LEN,
-        load_in_4bit=True,
-        dtype=None,
+        compute_dtype=None,
+        seed=args.seed,
     )
-    if not _looks_like_adapter_path(model_name):
-        model = FastLanguageModel.get_peft_model(
-            model,
-            r=LORA_RANK,
-            target_modules=[
-                "q_proj", "k_proj", "v_proj", "o_proj",
-                "gate_proj", "up_proj", "down_proj",
-            ],
-            lora_alpha=LORA_RANK * 2,
-            lora_dropout=0.0,
-            bias="none",
-            use_gradient_checkpointing="unsloth",
-            random_state=args.seed,
-        )
+    from unsloth import FastLanguageModel
     FastLanguageModel.for_training(model)
     dtype_summary = _align_trainable_dtypes(model)
     print(f"Aligned trainable parameter dtypes: {dtype_summary}")
@@ -901,7 +948,6 @@ def train_policy_gradient(args: argparse.Namespace) -> None:
 
 
 def train_grpo(args: argparse.Namespace) -> None:
-    from unsloth import FastLanguageModel
     from datasets import Dataset
     from trl import GRPOConfig, GRPOTrainer
     import torch
@@ -926,31 +972,19 @@ def train_grpo(args: argparse.Namespace) -> None:
 
     bf16_supported = bool(getattr(torch.cuda, "is_bf16_supported", lambda: False)())
     compute_dtype = torch.bfloat16 if bf16_supported else torch.float16
-    model, tokenizer = FastLanguageModel.from_pretrained(
+    model, tokenizer = _load_training_model_and_tokenizer(
         model_name=model_name,
+        model_key=args.model,
         max_seq_length=MAX_SEQ_LEN,
-        load_in_4bit=True,
-        dtype=compute_dtype,
+        compute_dtype=compute_dtype,
+        seed=args.seed,
     )
-    if not _looks_like_adapter_path(model_name):
-        model = FastLanguageModel.get_peft_model(
-            model,
-            r=LORA_RANK,
-            target_modules=[
-                "q_proj", "k_proj", "v_proj", "o_proj",
-                "gate_proj", "up_proj", "down_proj",
-            ],
-            lora_alpha=LORA_RANK * 2,
-            lora_dropout=0.0,
-            bias="none",
-            use_gradient_checkpointing="unsloth",
-            random_state=args.seed,
-        )
+    from unsloth import FastLanguageModel
     if getattr(tokenizer, "pad_token", None) is None:
         tokenizer.pad_token = tokenizer.eos_token
     if getattr(model, "config", None) is not None:
         try:
-            model.config.use_return_dict = True
+            model.config.return_dict = True
         except Exception:
             pass
         try:
@@ -1000,7 +1034,7 @@ def train_grpo(args: argparse.Namespace) -> None:
         "remove_unused_columns": False,
         "bf16": bf16_supported,
         "fp16": not bf16_supported,
-        "max_grad_norm": 0.0,
+        "max_grad_norm": 1.0,
         "seed": args.seed,
     }
     if args.save_every > 0:
@@ -1031,26 +1065,34 @@ def train_grpo(args: argparse.Namespace) -> None:
             "score": 0.50,
         } for index in range(max(1, args.grpo_epochs))]
 
-    evaluation_rows = evaluate_model_suite(
-        model=model,
-        tokenizer=tokenizer,
-        selected_task=args.task,
-        eval_episodes=args.eval_episodes,
-        max_steps=args.max_steps,
-        use_tools=args.use_tools,
-        world_split=args.train_world_split,
-        seed_start=args.heldout_seed,
-    )
-    heldout_evaluation_rows = evaluate_model_suite(
-        model=model,
-        tokenizer=tokenizer,
-        selected_task=args.task,
-        eval_episodes=args.eval_episodes,
-        max_steps=args.max_steps,
-        use_tools=args.use_tools,
-        world_split=args.heldout_world_split,
-        seed_start=args.heldout_seed,
-    )
+    try:
+        evaluation_rows = evaluate_model_suite(
+            model=model,
+            tokenizer=tokenizer,
+            selected_task=args.task,
+            eval_episodes=args.eval_episodes,
+            max_steps=args.max_steps,
+            use_tools=args.use_tools,
+            world_split=args.train_world_split,
+            seed_start=args.heldout_seed,
+        )
+    except Exception as exc:
+        print(f"GRPO in-distribution evaluation failed: {exc}")
+        evaluation_rows = []
+    try:
+        heldout_evaluation_rows = evaluate_model_suite(
+            model=model,
+            tokenizer=tokenizer,
+            selected_task=args.task,
+            eval_episodes=args.eval_episodes,
+            max_steps=args.max_steps,
+            use_tools=args.use_tools,
+            world_split=args.heldout_world_split,
+            seed_start=args.heldout_seed,
+        )
+    except Exception as exc:
+        print(f"GRPO held-out evaluation failed: {exc}")
+        heldout_evaluation_rows = []
 
     metrics_path = save_metrics(
         output_dir=output_dir,

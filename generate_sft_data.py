@@ -15,13 +15,12 @@ from train import (
     TASKS,
     _current_reference,
     _teacher_payload,
-    attach_tool_results,
     build_messages,
     obs_to_dict,
     render_messages,
     task_for_episode,
 )
-from soc_tools import investigate_local_with_depth
+from soc_tools import attach_tool_results, investigate_local_with_depth
 
 
 def build_dataset(

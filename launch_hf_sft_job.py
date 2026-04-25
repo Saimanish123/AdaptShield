@@ -111,22 +111,37 @@ def build_command(args: argparse.Namespace, repo_url: str, output_subdir: str) -
     dataset_path = "/workspace/adaptshield/data/adaptshield_sft_worldsplit.jsonl"
     output_path = f"/workspace/adaptshield/checkpoints/{output_subdir}"
     summary_path = "/workspace/adaptshield/data/adaptshield_sft_worldsplit.summary.json"
+    extra_train_flags = "--skip-reward-curve" if args.skip_reward_curve else ""
 
     return f"""
 set -euo pipefail
 export TRANSFORMERS_NO_ADVISORY_WARNINGS=1
 export PYTHONWARNINGS="ignore::FutureWarning"
-apt-get update
-apt-get install -y git
-git clone {shlex.quote(repo_url)} /workspace/adaptshield
+export HF_HUB_ENABLE_HF_TRANSFER=1
+apt-get update -qq
+apt-get install -y -qq git
+if [ ! -d /workspace/adaptshield/.git ]; then
+  rm -rf /workspace/adaptshield
+  git clone --depth 1 {shlex.quote(repo_url)} /workspace/adaptshield
+fi
 cd /workspace/adaptshield
 python -m pip install -U pip setuptools wheel
 pip install -e .
 pip uninstall -y torchaudio || true
-pip install matplotlib unsloth trl accelerate bitsandbytes huggingface_hub
+pip install \\
+  matplotlib \\
+  "unsloth>=2024.10.7" \\
+  "trl>=0.11.0,<0.13.0" \\
+  "accelerate>=0.34.0" \\
+  "peft>=0.13.0" \\
+  "transformers>=4.45.0,<4.50.0" \\
+  "datasets>=2.20.0" \\
+  bitsandbytes \\
+  huggingface_hub \\
+  hf_transfer
 python - <<'PY'
 import importlib
-for name in ["torch", "transformers", "trl", "unsloth", "peft", "train", "train_sft", "generate_sft_data"]:
+for name in ["torch", "transformers", "trl", "unsloth", "peft", "datasets", "train", "train_sft", "generate_sft_data"]:
     importlib.import_module(name)
 print("Dependency smoke check passed.")
 PY
@@ -155,7 +170,8 @@ python train_sft.py \\
   --eval-task all \\
   --eval-episodes {args.eval_episodes} \\
   --use-tools \\
-  --output {output_path}
+  --output {output_path} \\
+  {extra_train_flags}
 
 python - <<'PY'
 import os
@@ -223,6 +239,11 @@ def main() -> int:
     parser.add_argument("--eval-episodes", type=int, default=2)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--heldout-seed", type=int, default=314)
+    parser.add_argument(
+        "--skip-reward-curve",
+        action="store_true",
+        help="Skip the per-checkpoint held-out reward sweep inside train_sft.py.",
+    )
     parser.add_argument("--output-subdir", default=None, help="Optional output folder name in the runs dataset repo")
     args = parser.parse_args()
 

@@ -166,15 +166,19 @@ def evaluate_suite_with_seed(
             tool_calls: List[int] = []
             for episode_index in range(eval_episodes):
                 os.environ["ADAPTSHIELD_SEED"] = str(seed_start + task_index * 100 + episode_index)
-                _, metrics = run_model_episode(
-                model=model,
-                tokenizer=tokenizer,
-                task=task,
-                max_steps=max_steps,
-                use_tools=use_tools,
-                world_split=world_split,
-                world_family=world_family,
-            )
+                try:
+                    _, metrics = run_model_episode(
+                        model=model,
+                        tokenizer=tokenizer,
+                        task=task,
+                        max_steps=max_steps,
+                        use_tools=use_tools,
+                        world_split=world_split,
+                        world_family=world_family,
+                    )
+                except Exception as exc:
+                    print(f"  eval episode failed (task={task}, ep={episode_index}): {exc}")
+                    continue
                 scores.append(float(metrics["score"]))
                 steps.append(int(metrics["steps"]))
                 tool_calls.append(int(metrics["tool_calls"]))
@@ -184,6 +188,7 @@ def evaluate_suite_with_seed(
                 "steps": round(sum(steps) / len(steps), 2) if steps else 0.0,
                 "tool_calls": round(sum(tool_calls) / len(tool_calls), 2) if tool_calls else 0.0,
                 "eval_episodes": eval_episodes,
+                "successful_episodes": len(scores),
                 "seed_start": seed_start,
                 "world_split": world_split,
                 "world_family": world_family or "auto",
@@ -194,6 +199,73 @@ def evaluate_suite_with_seed(
         else:
             os.environ["ADAPTSHIELD_SEED"] = original_seed
     return rows
+
+
+def _free_gpu(*objects: Any) -> None:
+    """Best-effort release of GPU memory between checkpoint evaluations."""
+    import gc
+
+    for obj in objects:
+        try:
+            del obj
+        except Exception:
+            pass
+    gc.collect()
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+    except Exception:
+        pass
+
+
+def _load_checkpoint_for_eval(
+    checkpoint_dir: Path,
+    base_model_name: str,
+    max_seq_length: int,
+) -> tuple[Any, Any]:
+    """Load an adapter checkpoint robustly, falling back to PEFT if needed."""
+    from unsloth import FastLanguageModel
+
+    is_adapter_only = (checkpoint_dir / "adapter_config.json").exists() and not (
+        checkpoint_dir / "config.json"
+    ).exists()
+
+    if not is_adapter_only:
+        try:
+            return FastLanguageModel.from_pretrained(
+                model_name=str(checkpoint_dir),
+                max_seq_length=max_seq_length,
+                load_in_4bit=True,
+                dtype=None,
+            )
+        except Exception as exc:
+            print(f"  direct load failed for {checkpoint_dir.name}: {exc}; "
+                  "falling back to base+adapter loader.")
+
+    model, tokenizer = FastLanguageModel.from_pretrained(
+        model_name=base_model_name,
+        max_seq_length=max_seq_length,
+        load_in_4bit=True,
+        dtype=None,
+    )
+    from peft import PeftModel
+
+    model = PeftModel.from_pretrained(
+        model,
+        str(checkpoint_dir),
+        is_trainable=False,
+        autocast_adapter_dtype=False,
+    )
+    try:
+        from transformers import AutoTokenizer
+
+        tokenizer = AutoTokenizer.from_pretrained(str(checkpoint_dir), trust_remote_code=True)
+    except Exception:
+        pass
+    return model, tokenizer
 
 
 def evaluate_saved_checkpoints(
@@ -208,56 +280,67 @@ def evaluate_saved_checkpoints(
     train_world_split: str,
     heldout_world_split: str,
 ) -> List[Dict[str, Any]]:
-    from unsloth import FastLanguageModel
-
+    base_model_name = MODEL_CHOICES[model_key]
     rows: List[Dict[str, Any]] = []
     for index, checkpoint_dir in enumerate(checkpoint_dirs(output_dir)):
         print(f"Held-out evaluating checkpoint: {checkpoint_dir.name}")
-        model, tokenizer = FastLanguageModel.from_pretrained(
-            model_name=str(checkpoint_dir),
-            max_seq_length=max_seq_length,
-            load_in_4bit=True,
-            dtype=None,
-        )
-        _normalize_generation_config(model)
-        _align_trainable_dtypes(model)
-        in_distribution_rows = evaluate_suite_with_seed(
-            model=model,
-            tokenizer=tokenizer,
-            selected_task=selected_task,
-            eval_episodes=eval_episodes,
-            max_steps=max_steps,
-            use_tools=use_tools,
-            seed_start=heldout_seed + index * 1000,
-            world_split=train_world_split,
-        )
-        heldout_rows = evaluate_suite_with_seed(
-            model=model,
-            tokenizer=tokenizer,
-            selected_task=selected_task,
-            eval_episodes=eval_episodes,
-            max_steps=max_steps,
-            use_tools=use_tools,
-            seed_start=heldout_seed + index * 1000,
-            world_split=heldout_world_split,
-        )
-        in_distribution_score = round(
-            sum(float(row["score"]) for row in in_distribution_rows) / max(1, len(in_distribution_rows)),
-            3,
-        )
-        heldout_score = round(
-            sum(float(row["score"]) for row in heldout_rows) / max(1, len(heldout_rows)),
-            3,
-        )
-        rows.append({
-            "checkpoint": checkpoint_dir.name,
-            "in_distribution_score": in_distribution_score,
-            "heldout_score": heldout_score,
-            "in_distribution_rows": in_distribution_rows,
-            "heldout_rows": heldout_rows,
-        })
-        del model
-        del tokenizer
+        model = None
+        tokenizer = None
+        try:
+            model, tokenizer = _load_checkpoint_for_eval(
+                checkpoint_dir=checkpoint_dir,
+                base_model_name=base_model_name,
+                max_seq_length=max_seq_length,
+            )
+            _normalize_generation_config(model)
+            _align_trainable_dtypes(model)
+            in_distribution_rows = evaluate_suite_with_seed(
+                model=model,
+                tokenizer=tokenizer,
+                selected_task=selected_task,
+                eval_episodes=eval_episodes,
+                max_steps=max_steps,
+                use_tools=use_tools,
+                seed_start=heldout_seed + index * 1000,
+                world_split=train_world_split,
+            )
+            heldout_rows = evaluate_suite_with_seed(
+                model=model,
+                tokenizer=tokenizer,
+                selected_task=selected_task,
+                eval_episodes=eval_episodes,
+                max_steps=max_steps,
+                use_tools=use_tools,
+                seed_start=heldout_seed + index * 1000,
+                world_split=heldout_world_split,
+            )
+            in_distribution_score = round(
+                sum(float(row["score"]) for row in in_distribution_rows) / max(1, len(in_distribution_rows)),
+                3,
+            )
+            heldout_score = round(
+                sum(float(row["score"]) for row in heldout_rows) / max(1, len(heldout_rows)),
+                3,
+            )
+            rows.append({
+                "checkpoint": checkpoint_dir.name,
+                "in_distribution_score": in_distribution_score,
+                "heldout_score": heldout_score,
+                "in_distribution_rows": in_distribution_rows,
+                "heldout_rows": heldout_rows,
+            })
+        except Exception as exc:
+            print(f"  checkpoint eval failed for {checkpoint_dir.name}: {exc}")
+            rows.append({
+                "checkpoint": checkpoint_dir.name,
+                "in_distribution_score": 0.0,
+                "heldout_score": 0.0,
+                "error": str(exc),
+            })
+        finally:
+            _free_gpu(model, tokenizer)
+            model = None
+            tokenizer = None
     return rows
 
 
@@ -368,61 +451,96 @@ def train_sft(args: argparse.Namespace) -> None:
 
     log_history = list(getattr(getattr(trainer, "state", None), "log_history", []) or [])
     loss_plot_path = output_dir / "loss_curve.png"
-    build_loss_plot(log_history, loss_plot_path)
+    try:
+        build_loss_plot(log_history, loss_plot_path)
+    except Exception as exc:
+        print(f"Loss plot generation skipped: {exc}")
 
-    evaluation_rows = evaluate_suite_with_seed(
-        model=model,
-        tokenizer=tokenizer,
-        selected_task=args.eval_task,
-        eval_episodes=args.eval_episodes,
-        max_steps=args.eval_max_steps,
-        use_tools=args.use_tools,
-        seed_start=args.heldout_seed,
-        world_split=args.train_world_split,
-    )
-    heldout_evaluation_rows = evaluate_suite_with_seed(
-        model=model,
-        tokenizer=tokenizer,
-        selected_task=args.eval_task,
-        eval_episodes=args.eval_episodes,
-        max_steps=args.eval_max_steps,
-        use_tools=args.use_tools,
-        seed_start=args.heldout_seed,
-        world_split=args.heldout_world_split,
-    )
-
-    reward_curve_rows = evaluate_saved_checkpoints(
-        output_dir=output_dir,
-        model_key=args.model,
-        max_seq_length=args.max_seq_length,
-        selected_task=args.eval_task,
-        eval_episodes=args.eval_episodes,
-        max_steps=args.eval_max_steps,
-        use_tools=args.use_tools,
-        heldout_seed=args.heldout_seed,
-        train_world_split=args.train_world_split,
-        heldout_world_split=args.heldout_world_split,
-    )
-    reward_plot_path = output_dir / "reward_curve.png"
-    build_reward_plot(reward_curve_rows, reward_plot_path)
-
-    metrics = {
+    metrics: Dict[str, Any] = {
         "trainer": "sft",
         "model": model_name,
         "dataset": str(dataset_path),
         "rows": len(rows),
         "epochs": args.epochs,
         "learning_rate": args.lr,
-        "evaluation_rows": evaluation_rows,
-        "heldout_evaluation_rows": heldout_evaluation_rows,
+        "evaluation_rows": [],
+        "heldout_evaluation_rows": [],
         "heldout_seed": args.heldout_seed,
         "train_world_split": args.train_world_split,
         "heldout_world_split": args.heldout_world_split,
-        "reward_curve_rows": reward_curve_rows,
+        "reward_curve_rows": [],
         "log_history": log_history,
     }
     metrics_path = output_dir / "sft_metrics.json"
-    metrics_path.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
+
+    def _flush_metrics() -> None:
+        metrics_path.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
+
+    _flush_metrics()
+
+    try:
+        metrics["evaluation_rows"] = evaluate_suite_with_seed(
+            model=model,
+            tokenizer=tokenizer,
+            selected_task=args.eval_task,
+            eval_episodes=args.eval_episodes,
+            max_steps=args.eval_max_steps,
+            use_tools=args.use_tools,
+            seed_start=args.heldout_seed,
+            world_split=args.train_world_split,
+        )
+    except Exception as exc:
+        print(f"In-distribution evaluation failed: {exc}")
+    _flush_metrics()
+
+    try:
+        metrics["heldout_evaluation_rows"] = evaluate_suite_with_seed(
+            model=model,
+            tokenizer=tokenizer,
+            selected_task=args.eval_task,
+            eval_episodes=args.eval_episodes,
+            max_steps=args.eval_max_steps,
+            use_tools=args.use_tools,
+            seed_start=args.heldout_seed,
+            world_split=args.heldout_world_split,
+        )
+    except Exception as exc:
+        print(f"Held-out evaluation failed: {exc}")
+    _flush_metrics()
+
+    reward_curve_rows: List[Dict[str, Any]] = []
+    if args.skip_reward_curve:
+        print("Skipping per-checkpoint reward curve (--skip-reward-curve).")
+    else:
+        # Free training-time model before reloading checkpoints to avoid OOM.
+        _free_gpu(model, trainer)
+        try:
+            reward_curve_rows = evaluate_saved_checkpoints(
+                output_dir=output_dir,
+                model_key=args.model,
+                max_seq_length=args.max_seq_length,
+                selected_task=args.eval_task,
+                eval_episodes=args.eval_episodes,
+                max_steps=args.eval_max_steps,
+                use_tools=args.use_tools,
+                heldout_seed=args.heldout_seed,
+                train_world_split=args.train_world_split,
+                heldout_world_split=args.heldout_world_split,
+            )
+        except Exception as exc:
+            print(f"Per-checkpoint reward curve failed: {exc}")
+    metrics["reward_curve_rows"] = reward_curve_rows
+    _flush_metrics()
+
+    reward_plot_path = output_dir / "reward_curve.png"
+    if reward_curve_rows:
+        try:
+            build_reward_plot(reward_curve_rows, reward_plot_path)
+        except Exception as exc:
+            print(f"Reward plot generation skipped: {exc}")
+
+    evaluation_rows = metrics["evaluation_rows"]
+    heldout_evaluation_rows = metrics["heldout_evaluation_rows"]
 
     print("SFT complete.")
     print(f"Saved adapter to: {final_dir}")
@@ -479,6 +597,11 @@ def main() -> None:
         "--use-tools",
         action="store_true",
         help="Use SOC tools during post-train evaluation.",
+    )
+    parser.add_argument(
+        "--skip-reward-curve",
+        action="store_true",
+        help="Skip the per-checkpoint reward curve sweep (faster, avoids OOM).",
     )
     args = parser.parse_args()
     train_sft(args)
