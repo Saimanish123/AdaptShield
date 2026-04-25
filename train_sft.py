@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import random
 from pathlib import Path
 from typing import Any, Dict, List
@@ -16,6 +17,7 @@ from train import (
     MODEL_CHOICES,
     _filter_supported_kwargs,
     evaluate_model_suite,
+    run_model_episode,
 )
 
 
@@ -68,6 +70,34 @@ def build_loss_plot(log_history: List[Dict[str, Any]], output_path: Path) -> Non
     plt.close()
 
 
+def build_reward_plot(rows: List[Dict[str, Any]], output_path: Path) -> None:
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print("matplotlib not installed; skipping reward plot")
+        return
+
+    if not rows:
+        print("No held-out reward rows found; skipping reward plot")
+        return
+
+    checkpoint_labels = [str(row["checkpoint"]) for row in rows]
+    scores = [float(row["score"]) for row in rows]
+
+    plt.figure(figsize=(10, 5))
+    plt.plot(range(len(rows)), scores, color="#136f63", linewidth=2.5, marker="o", label="held-out mean reward")
+    plt.xticks(range(len(rows)), checkpoint_labels, rotation=35, ha="right")
+    plt.xlabel("Checkpoint")
+    plt.ylabel("normalized_score")
+    plt.title("AdaptShield Held-out Reward Curve")
+    plt.ylim(0.0, 1.0)
+    plt.grid(alpha=0.3)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close()
+
+
 def render_example(example: Dict[str, Any], tokenizer: Any) -> str:
     if "messages" in example:
         return tokenizer.apply_chat_template(
@@ -76,6 +106,114 @@ def render_example(example: Dict[str, Any], tokenizer: Any) -> str:
             add_generation_prompt=False,
         )
     return str(example["text"])
+
+
+def _checkpoint_sort_key(path: Path) -> tuple[int, str]:
+    if path.name == "final":
+        return (10**9, path.name)
+    if path.name.startswith("checkpoint-"):
+        try:
+            return (int(path.name.split("-", 1)[1]), path.name)
+        except Exception:
+            return (10**8, path.name)
+    return (10**7, path.name)
+
+
+def checkpoint_dirs(output_dir: Path) -> List[Path]:
+    checkpoints = [
+        path for path in output_dir.iterdir()
+        if path.is_dir() and (path.name.startswith("checkpoint-") or path.name == "final")
+    ]
+    return sorted(checkpoints, key=_checkpoint_sort_key)
+
+
+def evaluate_suite_with_seed(
+    model: Any,
+    tokenizer: Any,
+    selected_task: str,
+    eval_episodes: int,
+    max_steps: int,
+    use_tools: bool,
+    seed_start: int,
+) -> List[Dict[str, Any]]:
+    tasks = ["direct-triage", "dual-pivot", "polymorphic-zero-day"] if selected_task == "all" else [selected_task]
+    rows: List[Dict[str, Any]] = []
+    original_seed = os.environ.get("ADAPTSHIELD_SEED")
+    try:
+        for task_index, task in enumerate(tasks):
+            scores: List[float] = []
+            steps: List[int] = []
+            tool_calls: List[int] = []
+            for episode_index in range(eval_episodes):
+                os.environ["ADAPTSHIELD_SEED"] = str(seed_start + task_index * 100 + episode_index)
+                _, metrics = run_model_episode(
+                    model=model,
+                    tokenizer=tokenizer,
+                    task=task,
+                    max_steps=max_steps,
+                    use_tools=use_tools,
+                )
+                scores.append(float(metrics["score"]))
+                steps.append(int(metrics["steps"]))
+                tool_calls.append(int(metrics["tool_calls"]))
+            rows.append({
+                "task": task,
+                "score": round(sum(scores) / len(scores), 3) if scores else 0.50,
+                "steps": round(sum(steps) / len(steps), 2) if steps else 0.0,
+                "tool_calls": round(sum(tool_calls) / len(tool_calls), 2) if tool_calls else 0.0,
+                "eval_episodes": eval_episodes,
+                "seed_start": seed_start,
+            })
+    finally:
+        if original_seed is None:
+            os.environ.pop("ADAPTSHIELD_SEED", None)
+        else:
+            os.environ["ADAPTSHIELD_SEED"] = original_seed
+    return rows
+
+
+def evaluate_saved_checkpoints(
+    output_dir: Path,
+    model_key: str,
+    max_seq_length: int,
+    selected_task: str,
+    eval_episodes: int,
+    max_steps: int,
+    use_tools: bool,
+    heldout_seed: int,
+) -> List[Dict[str, Any]]:
+    from unsloth import FastLanguageModel
+
+    rows: List[Dict[str, Any]] = []
+    for index, checkpoint_dir in enumerate(checkpoint_dirs(output_dir)):
+        print(f"Held-out evaluating checkpoint: {checkpoint_dir.name}")
+        model, tokenizer = FastLanguageModel.from_pretrained(
+            model_name=str(checkpoint_dir),
+            max_seq_length=max_seq_length,
+            load_in_4bit=True,
+            dtype=None,
+        )
+        evaluation_rows = evaluate_suite_with_seed(
+            model=model,
+            tokenizer=tokenizer,
+            selected_task=selected_task,
+            eval_episodes=eval_episodes,
+            max_steps=max_steps,
+            use_tools=use_tools,
+            seed_start=heldout_seed + index * 1000,
+        )
+        aggregate = round(
+            sum(float(row["score"]) for row in evaluation_rows) / max(1, len(evaluation_rows)),
+            3,
+        )
+        rows.append({
+            "checkpoint": checkpoint_dir.name,
+            "score": aggregate,
+            "evaluation_rows": evaluation_rows,
+        })
+        del model
+        del tokenizer
+    return rows
 
 
 def train_sft(args: argparse.Namespace) -> None:
@@ -148,7 +286,8 @@ def train_sft(args: argparse.Namespace) -> None:
         "gradient_accumulation_steps": args.gradient_accumulation_steps,
         "num_train_epochs": args.epochs,
         "logging_steps": 1,
-        "save_strategy": "epoch",
+        "save_strategy": "steps",
+        "save_steps": args.save_steps,
         "report_to": "none",
         "seed": args.seed,
         "bf16": bf16_supported,
@@ -184,14 +323,28 @@ def train_sft(args: argparse.Namespace) -> None:
     loss_plot_path = output_dir / "loss_curve.png"
     build_loss_plot(log_history, loss_plot_path)
 
-    evaluation_rows = evaluate_model_suite(
+    evaluation_rows = evaluate_suite_with_seed(
         model=model,
         tokenizer=tokenizer,
         selected_task=args.eval_task,
         eval_episodes=args.eval_episodes,
         max_steps=args.eval_max_steps,
         use_tools=args.use_tools,
+        seed_start=args.heldout_seed,
     )
+
+    reward_curve_rows = evaluate_saved_checkpoints(
+        output_dir=output_dir,
+        model_key=args.model,
+        max_seq_length=args.max_seq_length,
+        selected_task=args.eval_task,
+        eval_episodes=args.eval_episodes,
+        max_steps=args.eval_max_steps,
+        use_tools=args.use_tools,
+        heldout_seed=args.heldout_seed,
+    )
+    reward_plot_path = output_dir / "reward_curve.png"
+    build_reward_plot(reward_curve_rows, reward_plot_path)
 
     metrics = {
         "trainer": "sft",
@@ -201,6 +354,8 @@ def train_sft(args: argparse.Namespace) -> None:
         "epochs": args.epochs,
         "learning_rate": args.lr,
         "evaluation_rows": evaluation_rows,
+        "heldout_seed": args.heldout_seed,
+        "reward_curve_rows": reward_curve_rows,
         "log_history": log_history,
     }
     metrics_path = output_dir / "sft_metrics.json"
@@ -209,6 +364,7 @@ def train_sft(args: argparse.Namespace) -> None:
     print("SFT complete.")
     print(f"Saved adapter to: {final_dir}")
     print(f"Loss curve: {loss_plot_path}")
+    print(f"Reward curve: {reward_plot_path}")
     print(f"Metrics: {metrics_path}")
     print("Post-train evaluation:")
     for row in evaluation_rows:
@@ -216,6 +372,9 @@ def train_sft(args: argparse.Namespace) -> None:
             f"  task={row['task']:<20} score={row['score']:.3f} "
             f"steps={row['steps']} tools={row['tool_calls']}"
         )
+    print("Held-out checkpoint reward curve:")
+    for row in reward_curve_rows:
+        print(f"  checkpoint={row['checkpoint']:<16} mean_score={row['score']:.3f}")
 
 
 def main() -> None:
@@ -234,10 +393,12 @@ def main() -> None:
     parser.add_argument("--epochs", type=float, default=1.0)
     parser.add_argument("--lr", type=float, default=2e-4)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--heldout-seed", type=int, default=314)
     parser.add_argument("--max-rows", type=int, default=0)
     parser.add_argument("--max-seq-length", type=int, default=MAX_SEQ_LEN)
     parser.add_argument("--per-device-batch-size", type=int, default=2)
     parser.add_argument("--gradient-accumulation-steps", type=int, default=4)
+    parser.add_argument("--save-steps", type=int, default=40)
     parser.add_argument(
         "--eval-task",
         default="all",
