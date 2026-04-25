@@ -164,6 +164,14 @@ pip install --upgrade --no-build-isolation "unsloth[cu124-torch260]"
 #     * pulls huggingface-hub<1.0 automatically (no separate hub pin needed).
 pip install "transformers==4.57.6"
 
+# torchao comes preinstalled in the base image at a version that requires torch 2.7+
+# (it calls torch.utils._pytree.register_constant which doesn't exist in torch 2.6, so
+# `import torchao` crashes with AttributeError). transformers' quantizer registry imports
+# torchao unconditionally if it's installed (`is_torchao_available()` only checks package
+# metadata, not import-ability). With torchao GONE, that check returns False and transformers
+# skips torchao cleanly. We don't use torchao quantization anyway — we use bitsandbytes 4-bit.
+pip uninstall -y torchao || true
+
 # Optional helpers we use directly (matplotlib for plots, hf_transfer for fast download/upload).
 pip install --upgrade matplotlib hf_transfer
 
@@ -178,9 +186,19 @@ PY
 
 # Smoke-test the actual modules we use. unsloth MUST import before transformers/trl
 # per its own warning. Importing transformers also triggers its OWN runtime version check on
-# huggingface_hub and tokenizers — so if pip ever picked a transformers/hub combo that don't
-# agree, this `import transformers` line will raise a clear ImportError before training starts.
+# huggingface_hub and tokenizers, AND eagerly imports any installed quantizer backend
+# (torchao, bnb, etc.) — so if anything is mis-pinned this line raises a clear error before
+# training starts.
 python - <<'PY'
+import sys, importlib.util
+
+# Pre-flight: torchao must be GONE (preinstalled version requires torch>=2.7 and crashes
+# `import torchao` on torch 2.6). If it leaked back in, fail with a precise message.
+if importlib.util.find_spec("torchao") is not None:
+    print("FATAL: torchao is installed; on torch 2.6 it crashes transformers at import. "
+          "Run `pip uninstall -y torchao` and rebuild.")
+    sys.exit(2)
+
 import unsloth  # noqa: F401  (must be first)
 import torch, transformers, trl, peft, datasets, bitsandbytes, huggingface_hub
 print(
@@ -188,14 +206,13 @@ print(
     f"trl={{trl.__version__}} peft={{peft.__version__}} bnb={{bitsandbytes.__version__}} "
     f"hub={{huggingface_hub.__version__}} datasets={{datasets.__version__}}"
 )
-# Hard-pin guard: if pip silently upgraded transformers off the 4.57.6 pin, fail fast.
 expected_transformers = "4.57.6"
 if transformers.__version__ != expected_transformers:
     print(
         f"FATAL: transformers={{transformers.__version__}} but pinned to {{expected_transformers}}. "
         f"Pip resolution drifted; aborting before training."
     )
-    import sys; sys.exit(2)
+    sys.exit(2)
 import train, train_sft, generate_sft_data  # noqa: F401
 print("Dependency smoke check passed.")
 PY
