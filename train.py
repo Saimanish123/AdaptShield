@@ -150,7 +150,9 @@ def save_metrics(
     use_tools: bool,
     trainer: str = "pg",
     evaluation_rows: List[Dict[str, Any]] | None = None,
+    heldout_evaluation_rows: List[Dict[str, Any]] | None = None,
     prompt_bank_size: int = 0,
+    extra: Dict[str, Any] | None = None,
 ) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     best_score = max((float(row["score"]) for row in rows), default=0.0)
@@ -167,8 +169,12 @@ def save_metrics(
     }
     if evaluation_rows is not None:
         payload["evaluation_rows"] = evaluation_rows
+    if heldout_evaluation_rows is not None:
+        payload["heldout_evaluation_rows"] = heldout_evaluation_rows
     if prompt_bank_size:
         payload["prompt_bank_size"] = prompt_bank_size
+    if extra:
+        payload.update(extra)
     metrics_path.write_text(json.dumps(payload, indent=2))
     return metrics_path
 
@@ -293,6 +299,8 @@ def build_prompt_bank(
     seed: int,
     world_split: str = "train",
     world_family: str | None = None,
+    hard_multiplier: int = 2,
+    borderline_bonus: int = 1,
 ) -> List[Dict[str, Any]]:
     random.seed(seed)
     rows: List[Dict[str, Any]] = []
@@ -309,7 +317,8 @@ def build_prompt_bank(
             world_family=world_family,
         )
         obs = env.reset()
-        while not obs.done and len(rows) < rollout_episodes * max_steps * 2:
+        step_count = 0
+        while not obs.done and step_count < max_steps:
             phase = int(getattr(obs, "phase", 1))
             tool_results = investigate_local_with_depth(
                 env,
@@ -336,11 +345,63 @@ def build_prompt_bank(
                 "expected_action": reference["expected_action"] if phase == 2 else "",
                 "tool_calls": len(tool_results),
                 "history_length": len(obs_dict.get("history", [])),
+                "difficulty_tags": _difficulty_tags(
+                    task=task,
+                    phase=phase,
+                    attack_stage=reference["stage"],
+                    tool_calls=len(tool_results),
+                    handoff_quality=str((obs_dict.get("phase1_assessment") or {}).get("handoff_quality", "")),
+                ),
             })
+            base_row = rows[-1]
+            for _ in range(_prompt_bank_extra_copies(
+                row=base_row,
+                hard_multiplier=hard_multiplier,
+                borderline_bonus=borderline_bonus,
+            )):
+                rows.append(dict(base_row))
             obs = env.step(AdaptShieldAction(**_teacher_payload(phase, reference)))
-            if len(rows) >= rollout_episodes * max_steps * 2:
-                break
+            step_count += 1
     return rows
+
+
+def _difficulty_tags(
+    task: str,
+    phase: int,
+    attack_stage: str,
+    tool_calls: int,
+    handoff_quality: str,
+) -> List[str]:
+    tags: List[str] = []
+    if task == "polymorphic-zero-day":
+        tags.append("hard")
+    elif task == "dual-pivot":
+        tags.append("medium")
+    if phase == 2:
+        tags.append("phase2")
+    if attack_stage in {"exploit", "exfiltration"}:
+        tags.append("late_stage")
+    if tool_calls >= 3:
+        tags.append("tool_fusion")
+    if handoff_quality == "degraded":
+        tags.append("borderline")
+    return tags
+
+
+def _prompt_bank_extra_copies(
+    row: Dict[str, Any],
+    hard_multiplier: int,
+    borderline_bonus: int,
+) -> int:
+    tags = set(row.get("difficulty_tags", []) or [])
+    extra = 0
+    if row.get("task") == "polymorphic-zero-day":
+        extra += max(0, hard_multiplier - 1)
+    elif row.get("task") == "dual-pivot" and "late_stage" in tags:
+        extra += 1
+    if "borderline" in tags or ("phase2" in tags and "tool_fusion" in tags and "late_stage" in tags):
+        extra += max(0, borderline_bonus)
+    return extra
 
 
 def _completion_to_text(completion: Any) -> str:
@@ -497,6 +558,7 @@ def evaluate_model_suite(
     use_tools: bool,
     world_split: str = "train",
     world_family: str | None = None,
+    seed_start: int | None = None,
 ) -> List[Dict[str, Any]]:
     tasks = TASKS if selected_task == "all" else [selected_task]
     rows: List[Dict[str, Any]] = []
@@ -504,7 +566,10 @@ def evaluate_model_suite(
         scores: List[float] = []
         steps: List[int] = []
         tool_calls: List[int] = []
-        for _ in range(eval_episodes):
+        original_seed = os.environ.get("ADAPTSHIELD_SEED")
+        for episode_index in range(eval_episodes):
+            if seed_start is not None:
+                os.environ["ADAPTSHIELD_SEED"] = str(seed_start + len(rows) * 100 + episode_index)
             _, metrics = run_model_episode(
                 model=model,
                 tokenizer=tokenizer,
@@ -517,6 +582,10 @@ def evaluate_model_suite(
             scores.append(float(metrics["score"]))
             steps.append(int(metrics["steps"]))
             tool_calls.append(int(metrics["tool_calls"]))
+        if original_seed is None:
+            os.environ.pop("ADAPTSHIELD_SEED", None)
+        else:
+            os.environ["ADAPTSHIELD_SEED"] = original_seed
         rows.append({
             "episode": len(rows) + 1,
             "task": task,
@@ -614,7 +683,7 @@ def train_policy_gradient(args: argparse.Namespace) -> None:
     random.seed(args.seed)
     torch.manual_seed(args.seed)
 
-    model_name = MODEL_CHOICES[args.model]
+    model_name = args.model_path or MODEL_CHOICES[args.model]
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -633,19 +702,20 @@ def train_policy_gradient(args: argparse.Namespace) -> None:
         load_in_4bit=True,
         dtype=None,
     )
-    model = FastLanguageModel.get_peft_model(
-        model,
-        r=LORA_RANK,
-        target_modules=[
-            "q_proj", "k_proj", "v_proj", "o_proj",
-            "gate_proj", "up_proj", "down_proj",
-        ],
-        lora_alpha=LORA_RANK * 2,
-        lora_dropout=0.0,
-        bias="none",
-        use_gradient_checkpointing="unsloth",
-        random_state=args.seed,
-    )
+    if not _looks_like_adapter_path(model_name):
+        model = FastLanguageModel.get_peft_model(
+            model,
+            r=LORA_RANK,
+            target_modules=[
+                "q_proj", "k_proj", "v_proj", "o_proj",
+                "gate_proj", "up_proj", "down_proj",
+            ],
+            lora_alpha=LORA_RANK * 2,
+            lora_dropout=0.0,
+            bias="none",
+            use_gradient_checkpointing="unsloth",
+            random_state=args.seed,
+        )
     FastLanguageModel.for_training(model)
     optimizer = AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
 
@@ -665,6 +735,7 @@ def train_policy_gradient(args: argparse.Namespace) -> None:
             task=task,
             max_steps=args.max_steps,
             use_tools=args.use_tools,
+            world_split=args.train_world_split,
         )
         rewards = [float(sample["reward"]) for sample in samples]
         baseline = sum(rewards) / len(rewards) if rewards else 0.0
@@ -728,6 +799,18 @@ def train_policy_gradient(args: argparse.Namespace) -> None:
         eval_episodes=args.eval_episodes,
         max_steps=args.max_steps,
         use_tools=args.use_tools,
+        world_split=args.train_world_split,
+        seed_start=args.heldout_seed,
+    )
+    heldout_evaluation_rows = evaluate_model_suite(
+        model=model,
+        tokenizer=tokenizer,
+        selected_task=args.task,
+        eval_episodes=args.eval_episodes,
+        max_steps=args.max_steps,
+        use_tools=args.use_tools,
+        world_split=args.heldout_world_split,
+        seed_start=args.heldout_seed,
     )
 
     metrics_path = save_metrics(
@@ -739,6 +822,12 @@ def train_policy_gradient(args: argparse.Namespace) -> None:
         use_tools=args.use_tools,
         trainer="pg",
         evaluation_rows=evaluation_rows,
+        heldout_evaluation_rows=heldout_evaluation_rows,
+        extra={
+            "train_world_split": args.train_world_split,
+            "heldout_world_split": args.heldout_world_split,
+            "heldout_seed": args.heldout_seed,
+        },
     )
     if args.plot:
         maybe_plot(metrics_path, output_dir)
@@ -746,6 +835,12 @@ def train_policy_gradient(args: argparse.Namespace) -> None:
     print(f"Training complete. Best score: {best_score:.3f}")
     print("Post-train online evaluation:")
     for row in evaluation_rows:
+        print(
+            f"  task={row['task']:<20} score={row['score']:.3f} "
+            f"steps={row['steps']} tools={row['tool_calls']}"
+        )
+    print("Held-out family evaluation:")
+    for row in heldout_evaluation_rows:
         print(
             f"  task={row['task']:<20} score={row['score']:.3f} "
             f"steps={row['steps']} tools={row['tool_calls']}"
@@ -762,7 +857,7 @@ def train_grpo(args: argparse.Namespace) -> None:
     random.seed(args.seed)
     torch.manual_seed(args.seed)
 
-    model_name = MODEL_CHOICES[args.model]
+    model_name = args.model_path or MODEL_CHOICES[args.model]
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -783,19 +878,20 @@ def train_grpo(args: argparse.Namespace) -> None:
         load_in_4bit=True,
         dtype=None,
     )
-    model = FastLanguageModel.get_peft_model(
-        model,
-        r=LORA_RANK,
-        target_modules=[
-            "q_proj", "k_proj", "v_proj", "o_proj",
-            "gate_proj", "up_proj", "down_proj",
-        ],
-        lora_alpha=LORA_RANK * 2,
-        lora_dropout=0.0,
-        bias="none",
-        use_gradient_checkpointing="unsloth",
-        random_state=args.seed,
-    )
+    if not _looks_like_adapter_path(model_name):
+        model = FastLanguageModel.get_peft_model(
+            model,
+            r=LORA_RANK,
+            target_modules=[
+                "q_proj", "k_proj", "v_proj", "o_proj",
+                "gate_proj", "up_proj", "down_proj",
+            ],
+            lora_alpha=LORA_RANK * 2,
+            lora_dropout=0.0,
+            bias="none",
+            use_gradient_checkpointing="unsloth",
+            random_state=args.seed,
+        )
     if getattr(tokenizer, "pad_token", None) is None:
         tokenizer.pad_token = tokenizer.eos_token
     FastLanguageModel.for_training(model)
@@ -808,6 +904,9 @@ def train_grpo(args: argparse.Namespace) -> None:
         max_steps=args.max_steps,
         use_tools=args.use_tools,
         seed=args.seed,
+        world_split=args.train_world_split,
+        hard_multiplier=args.prompt_bank_hard_multiplier,
+        borderline_bonus=args.prompt_bank_borderline_bonus,
     )
     if not prompt_bank:
         raise RuntimeError("Prompt bank is empty; cannot start GRPO training.")
@@ -867,6 +966,18 @@ def train_grpo(args: argparse.Namespace) -> None:
         eval_episodes=args.eval_episodes,
         max_steps=args.max_steps,
         use_tools=args.use_tools,
+        world_split=args.train_world_split,
+        seed_start=args.heldout_seed,
+    )
+    heldout_evaluation_rows = evaluate_model_suite(
+        model=model,
+        tokenizer=tokenizer,
+        selected_task=args.task,
+        eval_episodes=args.eval_episodes,
+        max_steps=args.max_steps,
+        use_tools=args.use_tools,
+        world_split=args.heldout_world_split,
+        seed_start=args.heldout_seed,
     )
 
     metrics_path = save_metrics(
@@ -878,7 +989,14 @@ def train_grpo(args: argparse.Namespace) -> None:
         use_tools=args.use_tools,
         trainer="grpo",
         evaluation_rows=evaluation_rows,
+        heldout_evaluation_rows=heldout_evaluation_rows,
         prompt_bank_size=len(prompt_bank),
+        extra={
+            "train_world_split": args.train_world_split,
+            "heldout_world_split": args.heldout_world_split,
+            "heldout_seed": args.heldout_seed,
+            "base_model": model_name,
+        },
     )
     if args.plot:
         maybe_plot(metrics_path, output_dir)
@@ -890,10 +1008,21 @@ def train_grpo(args: argparse.Namespace) -> None:
             f"  task={row['task']:<20} score={row['score']:.3f} "
             f"steps={row['steps']} tools={row['tool_calls']}"
         )
+    print("Held-out family evaluation:")
+    for row in heldout_evaluation_rows:
+        print(
+            f"  task={row['task']:<20} score={row['score']:.3f} "
+            f"steps={row['steps']} tools={row['tool_calls']}"
+        )
     if log_history:
         final_keys = sorted(log_history[-1].keys())
         print(f"Trainer log keys: {final_keys}")
     print(f"Metrics saved to: {metrics_path}")
+
+
+def _looks_like_adapter_path(model_name: str) -> bool:
+    path = Path(str(model_name))
+    return path.exists() and (path / "adapter_config.json").exists()
 
 
 def run_fallback_smoke(args: argparse.Namespace) -> None:
@@ -1024,6 +1153,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="AdaptShield training harness.")
     parser.add_argument("--task", default="direct-triage", choices=TASKS + ["all"])
     parser.add_argument("--model", default=DEFAULT_MODEL, choices=list(MODEL_CHOICES))
+    parser.add_argument("--model-path", default="", help="Optional local/HF adapter path to continue training from.")
     parser.add_argument("--episodes", type=int, default=60)
     parser.add_argument("--max-steps", type=int, default=30)
     parser.add_argument("--output", default="checkpoints/adaptshield")
@@ -1037,11 +1167,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--plot", action="store_true", help="Generate reward_curve.png from metrics.json after training.")
     parser.add_argument("--trainer", default="auto", choices=["auto", "pg", "grpo"], help="Training backend: safe policy-gradient fallback or TRL GRPO.")
     parser.add_argument("--prompt-bank-episodes", type=int, default=24, help="Reference rollout episodes used to build the GRPO prompt bank.")
+    parser.add_argument("--prompt-bank-hard-multiplier", type=int, default=2, help="Duplicate hard-task GRPO prompts this many times to emphasize difficult slices.")
+    parser.add_argument("--prompt-bank-borderline-bonus", type=int, default=1, help="Extra copies for degraded-handoff / borderline GRPO prompts.")
     parser.add_argument("--grpo-epochs", type=int, default=1, help="Number of epochs over the prompt bank for GRPO runs.")
     parser.add_argument("--num-generations", type=int, default=4, help="GRPO generations per prompt when TRL path is active.")
     parser.add_argument("--per-device-batch-size", type=int, default=1, help="Per-device batch size for GRPO training.")
     parser.add_argument("--gradient-accumulation-steps", type=int, default=4, help="Gradient accumulation for GRPO training.")
     parser.add_argument("--eval-episodes", type=int, default=2, help="Online environment episodes per task after GPU training.")
+    parser.add_argument("--train-world-split", default="train", choices=["train", "eval"], help="World split used for training/prompt-bank generation.")
+    parser.add_argument("--heldout-world-split", default="eval", choices=["train", "eval"], help="World split used for held-out evaluation.")
+    parser.add_argument("--heldout-seed", type=int, default=314, help="Seed offset used for held-out evaluation episodes.")
     return parser.parse_args()
 
 
