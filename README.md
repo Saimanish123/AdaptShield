@@ -36,7 +36,6 @@ gap, and the [Results](#results) section is where the gap closes.
 - **Colab notebook (SFT + GRPO reproducer, free T4):** `TODO`
 - **Artifacts / model repo:** [`SaiManish123/Janus`](https://huggingface.co/SaiManish123/Janus)
 - **Demo video:** `TODO`
-- **Blog / writeup:** `TODO`
 
 ---
 
