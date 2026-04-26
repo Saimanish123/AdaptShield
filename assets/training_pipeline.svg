@@ -1,87 +1,128 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="820" viewBox="0 0 1400 820">
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="600" viewBox="0 0 1280 600"
+     font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
   <defs>
-    <style>
-      text { font-family: "Helvetica Neue", Arial, sans-serif; fill: #17324d; }
-      .title { font-size: 34px; font-weight: 700; }
-      .subtitle { font-size: 17px; fill: #4b6886; }
-      .section { font-size: 20px; font-weight: 700; }
-      .body { font-size: 15px; }
-      .note { font-size: 13px; fill: #62809f; }
-      .card { stroke: #274d7d; stroke-width: 2; }
-      .arrow { stroke: #274d7d; stroke-width: 3; fill: none; marker-end: url(#arrowhead); }
-      .lane { stroke: #d8e5f2; stroke-width: 2; }
-    </style>
-    <marker id="arrowhead" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
-      <polygon points="0,0 10,4 0,8" fill="#274d7d"/>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="9" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#0f172a"/>
     </marker>
+    <style>
+      .h1   { font-size: 26px; font-weight: 700; fill: #0f172a; }
+      .sub  { font-size: 14px; fill: #64748b; }
+      .step { font-size: 11px; font-weight: 700; fill: #475569; letter-spacing: 0.06em; }
+      .card { font-size: 16px; font-weight: 700; fill: #0f172a; }
+      .body { font-size: 13px; fill: #0f172a; }
+      .meta { font-size: 12px; fill: #475569; }
+      .note { font-size: 12px; font-style: italic; fill: #64748b; }
+      .lbl  { font-size: 12px; font-weight: 600; fill: #0f172a; }
+      .cardbox { fill: #ffffff; stroke: #1e293b; stroke-width: 1.5; }
+      .hicard  { fill: #eff6ff; stroke: #1e293b; stroke-width: 1.5; }
+      .subbox  { fill: #ffffff; stroke: #94a3b8; stroke-width: 1; }
+      .flow { stroke: #0f172a; stroke-width: 1.6; fill: none; }
+    </style>
   </defs>
 
-  <rect width="1400" height="820" fill="#f6f9fc"/>
+  <rect width="1280" height="600" fill="#fafbfc"/>
 
-  <text x="70" y="70" class="title">Janus (AdaptShield) Training Pipeline</text>
-  <text x="70" y="104" class="subtitle">Environment-derived supervision builds the initial policy; held-out family evaluation measures transfer; GRPO tests whether reward-guided refinement helps.</text>
+  <text x="40" y="46" class="h1">Janus — Training Pipeline</text>
+  <text x="40" y="72" class="sub">Teacher data → LoRA SFT warm-start → GRPO refinement (two variants) → held-out eval → publish.</text>
 
-  <line x1="70" y1="145" x2="1330" y2="145" class="lane"/>
+  <!-- =================== STEP 1 =================== -->
+  <g>
+    <rect x="20" y="120" width="215" height="220" rx="10" class="cardbox"/>
+    <text x="34" y="144" class="step">STEP 1</text>
+    <text x="34" y="170" class="card">Generate SFT data</text>
 
-  <rect x="80" y="190" width="250" height="150" rx="20" ry="20" fill="#e8f2ff" class="card"/>
-  <text x="105" y="228" class="section">1. Generate SFT Data</text>
-  <text x="105" y="260" class="body">teacher rollouts</text>
-  <text x="105" y="286" class="body">train world families only</text>
-  <text x="105" y="312" class="body">tool traces + actions</text>
+    <text x="34" y="200" class="body">Scripted teacher policy</text>
+    <text x="34" y="221" class="body">rolled out on train-family</text>
+    <text x="34" y="242" class="body">worlds only</text>
+    <text x="34" y="278" class="meta">~3k episodes</text>
+    <text x="34" y="298" class="meta">tool traces + actions</text>
+    <text x="34" y="318" class="meta">→ chat-format JSONL</text>
+  </g>
 
-  <rect x="400" y="190" width="250" height="150" rx="20" ry="20" fill="#fff3e8" class="card"/>
-  <text x="425" y="228" class="section">2. SFT Warm Start</text>
-  <text x="425" y="260" class="body">LoRA fine-tuning</text>
-  <text x="425" y="286" class="body">loss curve</text>
-  <text x="425" y="312" class="body">checkpoint saves</text>
+  <!-- =================== STEP 2 =================== -->
+  <g>
+    <rect x="247" y="120" width="215" height="220" rx="10" class="hicard"/>
+    <text x="261" y="144" class="step">STEP 2</text>
+    <text x="261" y="170" class="card">SFT warm-start</text>
 
-  <rect x="720" y="190" width="250" height="150" rx="20" ry="20" fill="#eef9f0" class="card"/>
-  <text x="745" y="228" class="section">3. SFT Evaluation</text>
-  <text x="745" y="260" class="body">train-family score</text>
-  <text x="745" y="286" class="body">held-out-family score</text>
-  <text x="745" y="312" class="body">checkpoint reward curve</text>
+    <text x="261" y="200" class="body">Qwen2.5-1.5B-Instruct</text>
+    <text x="261" y="221" class="body">+ LoRA (r=64, α=128)</text>
+    <text x="261" y="242" class="body">on the SFT dataset</text>
+    <text x="261" y="278" class="meta">378 steps · 9m 49s</text>
+    <text x="261" y="298" class="meta">L4 ×1 (HF Jobs)</text>
+    <text x="261" y="318" class="meta">loss + reward curves</text>
+  </g>
 
-  <rect x="1040" y="190" width="280" height="150" rx="20" ry="20" fill="#f4efff" class="card"/>
-  <text x="1065" y="228" class="section">4. GRPO Prompt Bank</text>
-  <text x="1065" y="260" class="body">hard-task emphasis</text>
-  <text x="1065" y="286" class="body">borderline rollouts</text>
-  <text x="1065" y="312" class="body">tool-fusion-heavy prompts</text>
+  <!-- =================== STEP 3: GRPO (wider box) =================== -->
+  <g>
+    <rect x="474" y="120" width="320" height="220" rx="10" class="hicard"/>
+    <text x="488" y="144" class="step">STEP 3</text>
+    <text x="488" y="170" class="card">GRPO refinement</text>
+    <text x="488" y="190" class="meta">starts from the SFT adapter · two production runs</text>
 
-  <path d="M330 265 L400 265" class="arrow"/>
-  <path d="M650 265 L720 265" class="arrow"/>
-  <path d="M970 265 L1040 265" class="arrow"/>
+    <rect x="488" y="208" width="294" height="56" rx="6" class="subbox"/>
+    <text x="500" y="227" class="lbl">Mixed curriculum</text>
+    <text x="500" y="247" class="meta">direct 0.3 / dual 0.4 / poly 0.3 · 1,628 ep · 1h 26m</text>
+    <text x="500" y="261" class="meta">grpo_worldsplit_1_5b</text>
 
-  <line x1="70" y1="410" x2="1330" y2="410" class="lane"/>
+    <rect x="488" y="272" width="294" height="56" rx="6" class="subbox"/>
+    <text x="500" y="291" class="lbl">Hard-task focus</text>
+    <text x="500" y="311" class="meta">polymorphic-zero-day only · 4,357 ep · 3h 17m</text>
+    <text x="500" y="325" class="meta">grpo_polymorphic_zero_day_1_5b</text>
+  </g>
 
-  <rect x="180" y="455" width="310" height="185" rx="22" ry="22" fill="#ffeceb" class="card"/>
-  <text x="210" y="495" class="section">5. GRPO Refinement</text>
-  <text x="210" y="528" class="body">starts from the SFT adapter</text>
-  <text x="210" y="554" class="body">short RL schedule, low LR</text>
-  <text x="210" y="580" class="body">tries to improve task reward without</text>
-  <text x="210" y="606" class="body">destroying the supervised policy</text>
-  <text x="210" y="632" class="note">This stage is intentionally harder to win than SFT.</text>
+  <!-- =================== STEP 4 =================== -->
+  <g>
+    <rect x="806" y="120" width="215" height="220" rx="10" class="cardbox"/>
+    <text x="820" y="144" class="step">STEP 4</text>
+    <text x="820" y="170" class="card">Held-out eval</text>
 
-  <rect x="545" y="455" width="310" height="185" rx="22" ry="22" fill="#eef4ff" class="card"/>
-  <text x="575" y="495" class="section">6. Final Comparison</text>
-  <text x="575" y="528" class="body">no-tool baseline</text>
-  <text x="575" y="554" class="body">tool-aware baseline</text>
-  <text x="575" y="580" class="body">SFT train and held-out families</text>
-  <text x="575" y="606" class="body">GRPO train and held-out families</text>
-  <text x="575" y="632" class="note">This is where the benchmark shows whether RL actually helps.</text>
+    <text x="820" y="200" class="body">50 deterministic seeds</text>
+    <text x="820" y="221" class="body">per task on eval-a/-b</text>
+    <text x="820" y="242" class="body">world families only</text>
+    <text x="820" y="278" class="meta">vs no-tool baseline</text>
+    <text x="820" y="298" class="meta">vs tool-aware baseline</text>
+    <text x="820" y="318" class="meta">vs SFT-only checkpoint</text>
+  </g>
 
-  <rect x="910" y="455" width="320" height="185" rx="22" ry="22" fill="#ffffff" class="card"/>
-  <text x="940" y="495" class="section">7. Published Artifacts</text>
-  <text x="940" y="528" class="body">benchmark table</text>
-  <text x="940" y="554" class="body">SFT loss curve</text>
-  <text x="940" y="580" class="body">SFT held-out reward curve</text>
-  <text x="940" y="606" class="body">GRPO hard-task reward curve</text>
-  <text x="940" y="632" class="note">The benchmark story is carried by these outputs, not by raw logs.</text>
+  <!-- =================== STEP 5 =================== -->
+  <g>
+    <rect x="1033" y="120" width="227" height="220" rx="10" class="cardbox"/>
+    <text x="1047" y="144" class="step">STEP 5</text>
+    <text x="1047" y="170" class="card">Publish artifacts</text>
 
-  <path d="M1180 340 L1180 425" class="arrow"/>
-  <path d="M1040 550 L855 550" class="arrow"/>
-  <path d="M545 550 L490 550" class="arrow"/>
+    <text x="1047" y="200" class="body">Adapters + curves</text>
+    <text x="1047" y="221" class="body">Per-episode metrics</text>
+    <text x="1047" y="242" class="body">Benchmark table</text>
+    <text x="1047" y="263" class="body">Stdout logs</text>
+    <text x="1047" y="298" class="meta">all on HF Hub:</text>
+    <text x="1047" y="318" class="meta" font-weight="600">SaiManish123/Janus</text>
+  </g>
 
-  <text x="1192" y="390" class="note">warm-start source</text>
-  <text x="880" y="535" class="note">results</text>
-  <text x="505" y="535" class="note">policy</text>
+  <!-- =================== ARROWS =================== -->
+  <path d="M 235 230 L 247 230" class="flow" marker-end="url(#arrow)"/>
+  <path d="M 462 230 L 474 230" class="flow" marker-end="url(#arrow)"/>
+  <path d="M 794 230 L 806 230" class="flow" marker-end="url(#arrow)"/>
+  <path d="M 1021 230 L 1033 230" class="flow" marker-end="url(#arrow)"/>
+
+  <!-- =================== HARDWARE / REPRODUCER FOOTER =================== -->
+  <g>
+    <rect x="20" y="400" width="1240" height="74" rx="10" class="cardbox"/>
+    <text x="40" y="424" class="lbl">Production hardware</text>
+    <text x="40" y="445" class="body">Hugging Face Jobs · L4 ×1 (24 GB) · bf16 · Unsloth + TRL · single-node</text>
+    <text x="40" y="464" class="meta">Combined wall-clock for SFT + both GRPO variants: ~4h 53m.</text>
+
+    <line x1="660" y1="412" x2="660" y2="464" stroke="#cbd5e1" stroke-width="1"/>
+
+    <text x="680" y="424" class="lbl">Free-tier reproducer (Colab)</text>
+    <text x="680" y="445" class="body">Same pipeline scaled to Qwen2.5-0.5B + reduced budget on T4.</text>
+    <text x="680" y="464" class="meta">~35 min end-to-end. README numbers are from the L4 1.5B run.</text>
+  </g>
+
+  <!-- =================== EVAL BREAKDOWN STRIP =================== -->
+  <g>
+    <text x="40" y="510" class="step">EVAL CONTRACT</text>
+    <text x="40" y="534" class="body"><tspan font-weight="700">Disjoint train / eval split:</tspan> world families train-a, train-b are never seen at eval; eval-a, eval-b are never seen at train.</text>
+    <text x="40" y="554" class="body"><tspan font-weight="700">Reward:</tspan> deterministic Python — no LLM-as-judge.   <tspan font-weight="700">Score range:</tspan> clamped to (0.01, 0.99) so GRPO advantage estimates stay non-degenerate.</text>
+  </g>
 </svg>

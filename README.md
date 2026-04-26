@@ -1,5 +1,5 @@
 ---
-title: Janus (AdaptShield)
+title: Janus (AdaptShield) — Adaptive Incident Response Under Polymorphic Adversaries
 emoji: 🛡️
 colorFrom: blue
 colorTo: red
@@ -14,7 +14,7 @@ tags:
 short_description: Two-phase adaptive cybersecurity benchmark for LLMs
 ---
 
-# Janus (AdaptShield) — Two-Phase Adaptive Cybersecurity Benchmark
+# Janus (AdaptShield) — Adaptive Incident Response Under Polymorphic Adversaries
 
 **AdaptShield** is the environment: a two-phase agentic cybersecurity
 simulator where an LLM defends a 4-node enterprise network against an
@@ -114,7 +114,7 @@ the model for memorization it didn't do.
 
 ![SFT loss curve](https://huggingface.co/SaiManish123/Janus/resolve/main/sft_worldsplit_1_5b/loss_curve.png)
 
-![SFT held-out reward curve](https://huggingface.co/SaiManish123/Janus/resolve/main/sft_worldsplit_1_5b/reward_curve.png)
+![SFT learning curve — tool-aware baseline anchor, train family vs held-out family across checkpoints](https://huggingface.co/SaiManish123/Janus/resolve/main/sft_worldsplit_1_5b/reward_curve.png)
 
 ### GRPO — refinement on the polymorphic adversary
 

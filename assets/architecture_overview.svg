@@ -1,95 +1,173 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="820" viewBox="0 0 1400 820">
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="940" viewBox="0 0 1280 940"
+     font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
   <defs>
-    <style>
-      text { font-family: "Helvetica Neue", Arial, sans-serif; fill: #17324d; }
-      .title { font-size: 34px; font-weight: 700; }
-      .subtitle { font-size: 17px; fill: #4b6886; }
-      .section { font-size: 20px; font-weight: 700; }
-      .body { font-size: 15px; }
-      .note { font-size: 13px; fill: #62809f; }
-      .card { stroke: #274d7d; stroke-width: 2; }
-      .lane { stroke: #d8e5f2; stroke-width: 2; }
-      .arrow { stroke: #274d7d; stroke-width: 3; fill: none; marker-end: url(#arrowhead); }
-    </style>
-    <marker id="arrowhead" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
-      <polygon points="0,0 10,4 0,8" fill="#274d7d"/>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="9" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L9,4 z" fill="#0f172a"/>
     </marker>
+    <style>
+      .h1   { font-size: 26px; font-weight: 700; fill: #0f172a; }
+      .sub  { font-size: 14px; fill: #64748b; }
+      .step { font-size: 12px; font-weight: 700; fill: #475569; letter-spacing: 0.05em; }
+      .card { font-size: 16px; font-weight: 700; fill: #0f172a; }
+      .body { font-size: 13px; fill: #0f172a; }
+      .pill { font-size: 12px; fill: #0f172a; }
+      .note { font-size: 12px; font-style: italic; fill: #64748b; }
+      .lbl  { font-size: 12px; font-weight: 600; fill: #0f172a; }
+      .cardbox { fill: #ffffff; stroke: #1e293b; stroke-width: 1.5; }
+      .hicard  { fill: #eff6ff; stroke: #1e293b; stroke-width: 1.5; }
+      .pillbox { fill: #f1f5f9; stroke: #cbd5e1; stroke-width: 1; }
+      .toolpill { fill: #ffffff; stroke: #94a3b8; stroke-width: 1; }
+      .flow { stroke: #0f172a; stroke-width: 1.6; fill: none; }
+    </style>
   </defs>
 
-  <rect width="1400" height="820" fill="#f6f9fc"/>
+  <rect width="1280" height="940" fill="#fafbfc"/>
 
-  <text x="70" y="70" class="title">Janus (AdaptShield) Architecture</text>
-  <text x="70" y="104" class="subtitle">A two-phase enterprise incident-response benchmark with tool-mediated investigation, attacker pivots, and mission-aware grading.</text>
+  <text x="40" y="46" class="h1">AdaptShield — Episode Loop</text>
+  <text x="40" y="72" class="sub">Per-episode sampling drives a two-phase agent through an information bottleneck onto a deterministic Python grader.</text>
 
-  <line x1="70" y1="145" x2="1330" y2="145" class="lane"/>
+  <!-- ============== STEP 1: EPISODE SETUP ============== -->
+  <g>
+    <rect x="40" y="100" width="1200" height="100" rx="10" class="cardbox"/>
+    <text x="60" y="124" class="step">STEP 1 — EPISODE SETUP (sampled per episode)</text>
 
-  <text x="70" y="185" class="section">Incident World</text>
+    <rect x="60" y="138" width="280" height="46" rx="6" class="pillbox"/>
+    <text x="74" y="158" class="pill" font-weight="600">Mission profile</text>
+    <text x="74" y="176" class="pill">login_stability · exfil_block · checkout_uptime …</text>
 
-  <rect x="70" y="210" width="280" height="145" rx="20" ry="20" fill="#e8f2ff" class="card"/>
-  <text x="95" y="245" class="section">Enterprise Network</text>
-  <text x="95" y="275" class="body">4-node service topology</text>
-  <text x="95" y="300" class="body">auth_service, payment_service</text>
-  <text x="95" y="325" class="body">database, api_gateway</text>
+    <rect x="350" y="138" width="280" height="46" rx="6" class="pillbox"/>
+    <text x="364" y="158" class="pill" font-weight="600">World family (disjoint split)</text>
+    <text x="364" y="176" class="pill">train: train-a, train-b   ·   eval: eval-a, eval-b</text>
 
-  <rect x="390" y="210" width="280" height="145" rx="20" ry="20" fill="#eef9f0" class="card"/>
-  <text x="415" y="245" class="section">SOC Tool Surface</text>
-  <text x="415" y="275" class="body">log_search, edr_status</text>
-  <text x="415" y="300" class="body">cmdb, vuln, identity</text>
-  <text x="415" y="325" class="body">change_calendar, netflow</text>
+    <rect x="640" y="138" width="280" height="46" rx="6" class="pillbox"/>
+    <text x="654" y="158" class="pill" font-weight="600">Operational mode (latent)</text>
+    <text x="654" y="176" class="pill">availability_guarded · confidentiality · balanced</text>
 
-  <rect x="710" y="210" width="280" height="145" rx="20" ry="20" fill="#fff3e8" class="card"/>
-  <text x="735" y="245" class="section">Adaptive Attacker</text>
-  <text x="735" y="275" class="body">recon -> exploit -> exfiltration</text>
-  <text x="735" y="300" class="body">mid-episode pivots</text>
-  <text x="735" y="325" class="body">hard-task polymorphism</text>
+    <rect x="930" y="138" width="290" height="46" rx="6" class="pillbox"/>
+    <text x="944" y="158" class="pill" font-weight="600">Task</text>
+    <text x="944" y="176" class="pill">direct-triage · dual-pivot · polymorphic-zero-day</text>
+  </g>
 
-  <rect x="1030" y="210" width="300" height="145" rx="20" ry="20" fill="#f4efff" class="card"/>
-  <text x="1055" y="245" class="section">Operational Context</text>
-  <text x="1055" y="275" class="body">mission profile</text>
-  <text x="1055" y="300" class="body">world-family split</text>
-  <text x="1055" y="325" class="body">latent operational mode</text>
+  <path d="M 640 200 L 640 230" class="flow" marker-end="url(#arrow)"/>
 
-  <line x1="70" y1="400" x2="1330" y2="400" class="lane"/>
+  <!-- ============== STEP 2: WORLD ============== -->
+  <g>
+    <rect x="40" y="240" width="1200" height="120" rx="10" class="cardbox"/>
+    <text x="60" y="264" class="step">STEP 2 — WORLD (4-node enterprise + adaptive attacker)</text>
 
-  <text x="70" y="440" class="section">Two-Phase Agent Loop</text>
+    <rect x="60" y="278" width="240" height="40" rx="6" class="pillbox"/>
+    <text x="180" y="303" class="pill" text-anchor="middle" font-weight="600">auth_service</text>
 
-  <rect x="110" y="475" width="360" height="190" rx="22" ry="22" fill="#fff8eb" class="card"/>
-  <text x="140" y="515" class="section">Phase 1: Threat Analyst</text>
-  <text x="140" y="548" class="body">Sees raw alerts, node metrics, attack stage,</text>
-  <text x="140" y="572" class="body">history, mission context, and tool evidence.</text>
-  <text x="140" y="606" class="body">Outputs threat type, confidence, target node,</text>
-  <text x="140" y="630" class="body">and recommended action.</text>
-  <text x="140" y="658" class="note">This phase is graded on classification quality and sets up the handoff.</text>
+    <rect x="320" y="278" width="240" height="40" rx="6" class="pillbox"/>
+    <text x="440" y="303" class="pill" text-anchor="middle" font-weight="600">payment_service</text>
 
-  <rect x="525" y="505" width="180" height="130" rx="22" ry="22" fill="#ffffff" class="card"/>
-  <text x="555" y="550" class="section">Structured</text>
-  <text x="565" y="578" class="section">Handoff</text>
-  <text x="548" y="610" class="note">confidence, target,</text>
-  <text x="555" y="630" class="note">recommended action</text>
+    <rect x="580" y="278" width="240" height="40" rx="6" class="pillbox"/>
+    <text x="700" y="303" class="pill" text-anchor="middle" font-weight="600">database</text>
 
-  <rect x="760" y="475" width="360" height="190" rx="22" ry="22" fill="#ffeceb" class="card"/>
-  <text x="790" y="515" class="section">Phase 2: Tactical Executor</text>
-  <text x="790" y="548" class="body">Blind to raw network state.</text>
-  <text x="790" y="572" class="body">Receives only the analyst handoff and history.</text>
-  <text x="790" y="606" class="body">Chooses the mitigation under uncertainty and</text>
-  <text x="790" y="630" class="body">operational constraints.</text>
-  <text x="790" y="658" class="note">This phase exposes communication failures and decision errors separately.</text>
+    <rect x="840" y="278" width="240" height="40" rx="6" class="pillbox"/>
+    <text x="960" y="303" class="pill" text-anchor="middle" font-weight="600">api_gateway</text>
 
-  <rect x="1160" y="475" width="170" height="190" rx="22" ry="22" fill="#eef4ff" class="card"/>
-  <text x="1185" y="515" class="section">Deterministic</text>
-  <text x="1205" y="543" class="section">Grader</text>
-  <text x="1185" y="580" class="body">security correctness</text>
-  <text x="1185" y="605" class="body">false-positive penalty</text>
-  <text x="1185" y="630" class="body">business impact</text>
-  <text x="1185" y="655" class="body">mission alignment</text>
+    <text x="60" y="342" class="body">
+      <tspan font-weight="700">Attacker</tspan>
+      <tspan>  recon → exploit → lateral → exfiltration</tspan>
+      <tspan dx="20" font-weight="700">Polymorphism</tspan>
+      <tspan>  strategy shifts mid-episode after turn 3 on the hard task</tspan>
+    </text>
+  </g>
 
-  <path d="M350 355 L350 455" class="arrow"/>
-  <path d="M530 570 L470 570" class="arrow"/>
-  <path d="M705 570 L760 570" class="arrow"/>
-  <path d="M1120 570 L1160 570" class="arrow"/>
+  <path d="M 640 360 L 640 390" class="flow" marker-end="url(#arrow)"/>
+  <text x="650" y="382" class="lbl">raw alerts · node metrics · attack stage history</text>
 
-  <text x="332" y="430" class="note">observations</text>
-  <text x="490" y="553" class="note">assessment</text>
-  <text x="718" y="553" class="note">execution</text>
-  <text x="1125" y="553" class="note">reward</text>
+  <!-- ============== STEP 3: PHASE 1 ============== -->
+  <g>
+    <rect x="40" y="400" width="1200" height="180" rx="10" class="hicard"/>
+    <text x="60" y="424" class="step">STEP 3 — PHASE 1: THREAT ANALYST (sees full state, can investigate)</text>
+
+    <text x="60" y="455" class="card">Input</text>
+    <text x="60" y="478" class="body">raw SIEM alerts, node metrics, mission profile, attacker history</text>
+
+    <text x="60" y="514" class="card">Action space</text>
+    <text x="60" y="537" class="body">classify threat · pick target node · recommend mitigation · or call a tool</text>
+
+    <text x="60" y="565" class="note">Phase 1 is graded on classification quality — its outputs both score and bottleneck-feed Phase 2.</text>
+
+    <!-- Tool catalog -->
+    <rect x="650" y="438" width="570" height="130" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="1"/>
+    <text x="668" y="460" class="card" font-size="14">Tool catalog (7) — Phase 1 only</text>
+
+    <rect x="668" y="472" width="170" height="28" rx="4" class="toolpill"/>
+    <text x="753" y="491" class="pill" text-anchor="middle">log_search</text>
+
+    <rect x="848" y="472" width="170" height="28" rx="4" class="toolpill"/>
+    <text x="933" y="491" class="pill" text-anchor="middle">cmdb_lookup</text>
+
+    <rect x="1028" y="472" width="174" height="28" rx="4" class="toolpill"/>
+    <text x="1115" y="491" class="pill" text-anchor="middle">edr_status</text>
+
+    <rect x="668" y="506" width="170" height="28" rx="4" class="toolpill"/>
+    <text x="753" y="525" class="pill" text-anchor="middle">vuln_lookup</text>
+
+    <rect x="848" y="506" width="170" height="28" rx="4" class="toolpill"/>
+    <text x="933" y="525" class="pill" text-anchor="middle">identity_lookup</text>
+
+    <rect x="1028" y="506" width="174" height="28" rx="4" class="toolpill"/>
+    <text x="1115" y="525" class="pill" text-anchor="middle">change_calendar</text>
+
+    <rect x="668" y="540" width="170" height="28" rx="4" class="toolpill"/>
+    <text x="753" y="559" class="pill" text-anchor="middle">netflow_lookup</text>
+  </g>
+
+  <!-- ============== INFORMATION BOTTLENECK ============== -->
+  <path d="M 640 580 L 640 620" class="flow" marker-end="url(#arrow)"/>
+  <text x="650" y="612" class="lbl">structured handoff: { threat_type, confidence, target_node, recommended_action }</text>
+  <text x="650" y="630" class="note">information bottleneck — Phase 2 cannot see raw state, only this handoff</text>
+
+  <!-- ============== STEP 4: PHASE 2 ============== -->
+  <g>
+    <rect x="40" y="650" width="1200" height="130" rx="10" class="hicard"/>
+    <text x="60" y="674" class="step">STEP 4 — PHASE 2: TACTICAL EXECUTOR (blind to raw state)</text>
+
+    <text x="60" y="705" class="card">Input</text>
+    <text x="60" y="728" class="body">Phase 1 handoff + episode history + current operational constraints</text>
+
+    <text x="60" y="757" class="card">Defense action</text>
+
+    <rect x="240" y="744" width="170" height="26" rx="4" class="toolpill"/>
+    <text x="325" y="762" class="pill" text-anchor="middle">rate_limit</text>
+
+    <rect x="420" y="744" width="170" height="26" rx="4" class="toolpill"/>
+    <text x="505" y="762" class="pill" text-anchor="middle">isolate</text>
+
+    <rect x="600" y="744" width="170" height="26" rx="4" class="toolpill"/>
+    <text x="685" y="762" class="pill" text-anchor="middle">honeypot</text>
+
+    <rect x="780" y="744" width="170" height="26" rx="4" class="toolpill"/>
+    <text x="865" y="762" class="pill" text-anchor="middle">patch</text>
+
+    <text x="970" y="762" class="note">each defense has a TTL and operational side-effect</text>
+  </g>
+
+  <path d="M 640 780 L 640 810" class="flow" marker-end="url(#arrow)"/>
+
+  <!-- ============== STEP 5: GRADER ============== -->
+  <g>
+    <rect x="40" y="820" width="1200" height="100" rx="10" class="cardbox"/>
+    <text x="60" y="844" class="step">STEP 5 — DETERMINISTIC PYTHON GRADER (no LLM-as-judge)</text>
+
+    <rect x="60" y="858" width="270" height="46" rx="6" class="pillbox"/>
+    <text x="74" y="878" class="pill" font-weight="600">Security correctness</text>
+    <text x="74" y="896" class="pill">strategy match · attack stage progression</text>
+
+    <rect x="340" y="858" width="270" height="46" rx="6" class="pillbox"/>
+    <text x="354" y="878" class="pill" font-weight="600">False-positive penalty</text>
+    <text x="354" y="896" class="pill">unjustified disruptive defense</text>
+
+    <rect x="620" y="858" width="270" height="46" rx="6" class="pillbox"/>
+    <text x="634" y="878" class="pill" font-weight="600">Operational impact</text>
+    <text x="634" y="896" class="pill">availability cost · blast radius (CMDB)</text>
+
+    <rect x="900" y="858" width="320" height="46" rx="6" class="pillbox"/>
+    <text x="914" y="878" class="pill" font-weight="600">Mission alignment + clamp</text>
+    <text x="914" y="896" class="pill">mission-aware bonus, reward ∈ (0.01, 0.99)</text>
+  </g>
 </svg>

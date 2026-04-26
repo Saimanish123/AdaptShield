@@ -26,3 +26,6 @@ ENV/
 env.bak/
 venv.bak/
 .DS_Store
+.hf_cache/
+.svgvenv/
+.mpl_cache/
