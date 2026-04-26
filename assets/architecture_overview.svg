@@ -1,13 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760">
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="820" viewBox="0 0 1400 820">
   <defs>
     <style>
-      text { font-family: Arial, sans-serif; fill: #17324d; }
-      .title { font-size: 30px; font-weight: 700; }
-      .subtitle { font-size: 16px; fill: #45627f; }
+      text { font-family: "Helvetica Neue", Arial, sans-serif; fill: #17324d; }
+      .title { font-size: 34px; font-weight: 700; }
+      .subtitle { font-size: 17px; fill: #4b6886; }
       .section { font-size: 20px; font-weight: 700; }
       .body { font-size: 15px; }
-      .note { font-size: 13px; fill: #5c7792; }
-      .border { stroke: #274d7d; stroke-width: 2; }
+      .note { font-size: 13px; fill: #62809f; }
+      .card { stroke: #274d7d; stroke-width: 2; }
+      .lane { stroke: #d8e5f2; stroke-width: 2; }
       .arrow { stroke: #274d7d; stroke-width: 3; fill: none; marker-end: url(#arrowhead); }
     </style>
     <marker id="arrowhead" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
@@ -15,64 +16,80 @@
     </marker>
   </defs>
 
-  <rect x="0" y="0" width="1200" height="760" fill="#f7f9fc"/>
-  <text x="60" y="60" class="title">Janus (AdaptShield) Architecture</text>
-  <text x="60" y="92" class="subtitle">Two-phase enterprise cyber benchmark: partial observability, tool-mediated investigation, adaptive attacker, and mission-aware grading.</text>
+  <rect width="1400" height="820" fill="#f6f9fc"/>
 
-  <rect x="60" y="140" width="1080" height="220" rx="20" ry="20" fill="#ffffff" class="border"/>
-  <text x="90" y="182" class="section">Environment Layer</text>
+  <text x="70" y="70" class="title">Janus (AdaptShield) Architecture</text>
+  <text x="70" y="104" class="subtitle">A two-phase enterprise incident-response benchmark with tool-mediated investigation, attacker pivots, and mission-aware grading.</text>
 
-  <rect x="90" y="210" width="250" height="120" rx="18" ry="18" fill="#e8f3ff" class="border"/>
-  <text x="112" y="242" class="section">Enterprise World</text>
-  <text x="112" y="272" class="body">4-node topology</text>
-  <text x="112" y="296" class="body">mission profile</text>
-  <text x="112" y="320" class="body">train vs held-out family</text>
+  <line x1="70" y1="145" x2="1330" y2="145" class="lane"/>
 
-  <rect x="390" y="210" width="250" height="120" rx="18" ry="18" fill="#eef9f0" class="border"/>
-  <text x="412" y="242" class="section">SOC Tool Surface</text>
-  <text x="412" y="272" class="body">log_search, edr_status</text>
-  <text x="412" y="296" class="body">cmdb, vuln, identity</text>
-  <text x="412" y="320" class="body">change_calendar, netflow</text>
+  <text x="70" y="185" class="section">Incident World</text>
 
-  <rect x="690" y="210" width="250" height="120" rx="18" ry="18" fill="#fff2e8" class="border"/>
-  <text x="712" y="242" class="section">Adaptive Attacker</text>
-  <text x="712" y="272" class="body">recon -&gt; exploit -&gt; exfiltration</text>
-  <text x="712" y="296" class="body">mid-episode pivots</text>
-  <text x="712" y="320" class="body">hard-task polymorphism</text>
+  <rect x="70" y="210" width="280" height="145" rx="20" ry="20" fill="#e8f2ff" class="card"/>
+  <text x="95" y="245" class="section">Enterprise Network</text>
+  <text x="95" y="275" class="body">4-node service topology</text>
+  <text x="95" y="300" class="body">auth_service, payment_service</text>
+  <text x="95" y="325" class="body">database, api_gateway</text>
 
-  <rect x="60" y="410" width="1080" height="280" rx="20" ry="20" fill="#ffffff" class="border"/>
-  <text x="90" y="452" class="section">Agent and Grader Layer</text>
+  <rect x="390" y="210" width="280" height="145" rx="20" ry="20" fill="#eef9f0" class="card"/>
+  <text x="415" y="245" class="section">SOC Tool Surface</text>
+  <text x="415" y="275" class="body">log_search, edr_status</text>
+  <text x="415" y="300" class="body">cmdb, vuln, identity</text>
+  <text x="415" y="325" class="body">change_calendar, netflow</text>
 
-  <rect x="90" y="485" width="280" height="160" rx="18" ry="18" fill="#fff7e8" class="border"/>
-  <text x="112" y="518" class="section">Phase 1: Threat Analyst</text>
-  <text x="112" y="548" class="body">sees raw alerts and state</text>
-  <text x="112" y="572" class="body">investigates with SOC tools</text>
-  <text x="112" y="596" class="body">predicts threat, target, action</text>
-  <text x="112" y="620" class="note">This phase turns noisy evidence into a structured handoff.</text>
+  <rect x="710" y="210" width="280" height="145" rx="20" ry="20" fill="#fff3e8" class="card"/>
+  <text x="735" y="245" class="section">Adaptive Attacker</text>
+  <text x="735" y="275" class="body">recon -> exploit -> exfiltration</text>
+  <text x="735" y="300" class="body">mid-episode pivots</text>
+  <text x="735" y="325" class="body">hard-task polymorphism</text>
 
-  <rect x="460" y="485" width="280" height="160" rx="18" ry="18" fill="#ffeceb" class="border"/>
-  <text x="482" y="518" class="section">Phase 2: Tactical Executor</text>
-  <text x="482" y="548" class="body">blind to raw network state</text>
-  <text x="482" y="572" class="body">receives analyst handoff only</text>
-  <text x="482" y="596" class="body">chooses mitigation under constraints</text>
-  <text x="482" y="620" class="note">This phase tests communication quality and action judgment.</text>
+  <rect x="1030" y="210" width="300" height="145" rx="20" ry="20" fill="#f4efff" class="card"/>
+  <text x="1055" y="245" class="section">Operational Context</text>
+  <text x="1055" y="275" class="body">mission profile</text>
+  <text x="1055" y="300" class="body">world-family split</text>
+  <text x="1055" y="325" class="body">latent operational mode</text>
 
-  <rect x="830" y="485" width="280" height="160" rx="18" ry="18" fill="#f1edff" class="border"/>
-  <text x="852" y="518" class="section">Mission-Aware Grader</text>
-  <text x="852" y="548" class="body">security correctness</text>
-  <text x="852" y="572" class="body">business and availability impact</text>
-  <text x="852" y="596" class="body">dependency blast radius</text>
-  <text x="852" y="620" class="note">Produces dense reward and replay-friendly score breakdowns.</text>
+  <line x1="70" y1="400" x2="1330" y2="400" class="lane"/>
 
-  <path d="M215 330 L215 485" class="arrow"/>
-  <path d="M515 330 L230 470" class="arrow"/>
-  <path d="M815 330 L600 470" class="arrow"/>
-  <path d="M370 565 L460 565" class="arrow"/>
-  <path d="M740 565 L830 565" class="arrow"/>
+  <text x="70" y="440" class="section">Two-Phase Agent Loop</text>
 
-  <text x="236" y="395" class="note">observations</text>
-  <text x="388" y="447" class="note">tool evidence</text>
-  <text x="705" y="447" class="note">hidden attacker state</text>
-  <text x="392" y="548" class="note">structured handoff</text>
-  <text x="760" y="548" class="note">score + reward</text>
+  <rect x="110" y="475" width="360" height="190" rx="22" ry="22" fill="#fff8eb" class="card"/>
+  <text x="140" y="515" class="section">Phase 1: Threat Analyst</text>
+  <text x="140" y="548" class="body">Sees raw alerts, node metrics, attack stage,</text>
+  <text x="140" y="572" class="body">history, mission context, and tool evidence.</text>
+  <text x="140" y="606" class="body">Outputs threat type, confidence, target node,</text>
+  <text x="140" y="630" class="body">and recommended action.</text>
+  <text x="140" y="658" class="note">This phase is graded on classification quality and sets up the handoff.</text>
+
+  <rect x="525" y="505" width="180" height="130" rx="22" ry="22" fill="#ffffff" class="card"/>
+  <text x="555" y="550" class="section">Structured</text>
+  <text x="565" y="578" class="section">Handoff</text>
+  <text x="548" y="610" class="note">confidence, target,</text>
+  <text x="555" y="630" class="note">recommended action</text>
+
+  <rect x="760" y="475" width="360" height="190" rx="22" ry="22" fill="#ffeceb" class="card"/>
+  <text x="790" y="515" class="section">Phase 2: Tactical Executor</text>
+  <text x="790" y="548" class="body">Blind to raw network state.</text>
+  <text x="790" y="572" class="body">Receives only the analyst handoff and history.</text>
+  <text x="790" y="606" class="body">Chooses the mitigation under uncertainty and</text>
+  <text x="790" y="630" class="body">operational constraints.</text>
+  <text x="790" y="658" class="note">This phase exposes communication failures and decision errors separately.</text>
+
+  <rect x="1160" y="475" width="170" height="190" rx="22" ry="22" fill="#eef4ff" class="card"/>
+  <text x="1185" y="515" class="section">Deterministic</text>
+  <text x="1205" y="543" class="section">Grader</text>
+  <text x="1185" y="580" class="body">security correctness</text>
+  <text x="1185" y="605" class="body">false-positive penalty</text>
+  <text x="1185" y="630" class="body">business impact</text>
+  <text x="1185" y="655" class="body">mission alignment</text>
+
+  <path d="M350 355 L350 455" class="arrow"/>
+  <path d="M530 570 L470 570" class="arrow"/>
+  <path d="M705 570 L760 570" class="arrow"/>
+  <path d="M1120 570 L1160 570" class="arrow"/>
+
+  <text x="332" y="430" class="note">observations</text>
+  <text x="490" y="553" class="note">assessment</text>
+  <text x="718" y="553" class="note">execution</text>
+  <text x="1125" y="553" class="note">reward</text>
 </svg>

@@ -1,84 +1,87 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760">
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="820" viewBox="0 0 1400 820">
   <defs>
     <style>
-      text { font-family: Arial, sans-serif; fill: #17324d; }
-      .title { font-size: 30px; font-weight: 700; }
-      .subtitle { font-size: 16px; fill: #45627f; }
-      .section { font-size: 19px; font-weight: 700; }
+      text { font-family: "Helvetica Neue", Arial, sans-serif; fill: #17324d; }
+      .title { font-size: 34px; font-weight: 700; }
+      .subtitle { font-size: 17px; fill: #4b6886; }
+      .section { font-size: 20px; font-weight: 700; }
       .body { font-size: 15px; }
-      .note { font-size: 13px; fill: #5c7792; }
-      .border { stroke: #274d7d; stroke-width: 2; }
+      .note { font-size: 13px; fill: #62809f; }
+      .card { stroke: #274d7d; stroke-width: 2; }
       .arrow { stroke: #274d7d; stroke-width: 3; fill: none; marker-end: url(#arrowhead); }
+      .lane { stroke: #d8e5f2; stroke-width: 2; }
     </style>
     <marker id="arrowhead" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
       <polygon points="0,0 10,4 0,8" fill="#274d7d"/>
     </marker>
   </defs>
 
-  <rect x="0" y="0" width="1200" height="760" fill="#f7f9fc"/>
-  <text x="60" y="60" class="title">Janus (AdaptShield) Training Pipeline</text>
-  <text x="60" y="92" class="subtitle">Environment-generated demonstrations warm-start the policy; GRPO then refines it while held-out family evaluation measures transfer.</text>
+  <rect width="1400" height="820" fill="#f6f9fc"/>
 
-  <rect x="70" y="150" width="210" height="170" rx="18" ry="18" fill="#e8f3ff" class="border"/>
-  <text x="92" y="184" class="section">1. Generate SFT Data</text>
-  <text x="92" y="216" class="body">teacher rollouts</text>
-  <text x="92" y="240" class="body">train families only</text>
-  <text x="92" y="264" class="body">tool traces + actions</text>
-  <text x="92" y="288" class="note">Output: JSONL supervision set</text>
+  <text x="70" y="70" class="title">Janus (AdaptShield) Training Pipeline</text>
+  <text x="70" y="104" class="subtitle">Environment-derived supervision builds the initial policy; held-out family evaluation measures transfer; GRPO tests whether reward-guided refinement helps.</text>
 
-  <rect x="350" y="150" width="210" height="170" rx="18" ry="18" fill="#fff4e8" class="border"/>
-  <text x="372" y="184" class="section">2. SFT Warm Start</text>
-  <text x="372" y="216" class="body">LoRA on compact base model</text>
-  <text x="372" y="240" class="body">loss curve</text>
-  <text x="372" y="264" class="body">checkpoint saves</text>
-  <text x="372" y="288" class="note">Output: SFT adapter</text>
+  <line x1="70" y1="145" x2="1330" y2="145" class="lane"/>
 
-  <rect x="630" y="150" width="210" height="170" rx="18" ry="18" fill="#eef8ef" class="border"/>
-  <text x="652" y="184" class="section">3. SFT Evaluation</text>
-  <text x="652" y="216" class="body">train-family score</text>
-  <text x="652" y="240" class="body">held-out-family score</text>
-  <text x="652" y="264" class="body">reward curve</text>
-  <text x="652" y="288" class="note">Output: metrics + plots</text>
+  <rect x="80" y="190" width="250" height="150" rx="20" ry="20" fill="#e8f2ff" class="card"/>
+  <text x="105" y="228" class="section">1. Generate SFT Data</text>
+  <text x="105" y="260" class="body">teacher rollouts</text>
+  <text x="105" y="286" class="body">train world families only</text>
+  <text x="105" y="312" class="body">tool traces + actions</text>
 
-  <rect x="910" y="150" width="210" height="170" rx="18" ry="18" fill="#f1edff" class="border"/>
-  <text x="932" y="184" class="section">4. Prompt Bank</text>
-  <text x="932" y="216" class="body">hard-task emphasis</text>
-  <text x="932" y="240" class="body">borderline episodes</text>
-  <text x="932" y="264" class="body">tool-fusion prompts</text>
-  <text x="932" y="288" class="note">Output: GRPO rollouts</text>
+  <rect x="400" y="190" width="250" height="150" rx="20" ry="20" fill="#fff3e8" class="card"/>
+  <text x="425" y="228" class="section">2. SFT Warm Start</text>
+  <text x="425" y="260" class="body">LoRA fine-tuning</text>
+  <text x="425" y="286" class="body">loss curve</text>
+  <text x="425" y="312" class="body">checkpoint saves</text>
 
-  <rect x="210" y="430" width="260" height="180" rx="18" ry="18" fill="#ffeceb" class="border"/>
-  <text x="232" y="464" class="section">5. GRPO Refinement</text>
-  <text x="232" y="496" class="body">start from SFT adapter</text>
-  <text x="232" y="520" class="body">short RL schedule</text>
-  <text x="232" y="544" class="body">preserve a stable policy</text>
-  <text x="232" y="568" class="note">Output: GRPO adapter</text>
+  <rect x="720" y="190" width="250" height="150" rx="20" ry="20" fill="#eef9f0" class="card"/>
+  <text x="745" y="228" class="section">3. SFT Evaluation</text>
+  <text x="745" y="260" class="body">train-family score</text>
+  <text x="745" y="286" class="body">held-out-family score</text>
+  <text x="745" y="312" class="body">checkpoint reward curve</text>
 
-  <rect x="540" y="430" width="260" height="180" rx="18" ry="18" fill="#eef8ef" class="border"/>
-  <text x="562" y="464" class="section">6. Final Evaluation</text>
-  <text x="562" y="496" class="body">easy / medium / hard</text>
-  <text x="562" y="520" class="body">train vs held-out family</text>
-  <text x="562" y="544" class="body">SFT vs GRPO delta</text>
-  <text x="562" y="568" class="note">Output: final benchmark metrics</text>
+  <rect x="1040" y="190" width="280" height="150" rx="20" ry="20" fill="#f4efff" class="card"/>
+  <text x="1065" y="228" class="section">4. GRPO Prompt Bank</text>
+  <text x="1065" y="260" class="body">hard-task emphasis</text>
+  <text x="1065" y="286" class="body">borderline rollouts</text>
+  <text x="1065" y="312" class="body">tool-fusion-heavy prompts</text>
 
-  <rect x="870" y="430" width="260" height="180" rx="18" ry="18" fill="#ffffff" class="border"/>
-  <text x="892" y="464" class="section">7. Submission Package</text>
-  <text x="892" y="496" class="body">benchmark table</text>
-  <text x="892" y="520" class="body">loss + reward plots</text>
-  <text x="892" y="544" class="body">README, notebook, demo</text>
-  <text x="892" y="568" class="note">Output: judge-facing deliverables</text>
+  <path d="M330 265 L400 265" class="arrow"/>
+  <path d="M650 265 L720 265" class="arrow"/>
+  <path d="M970 265 L1040 265" class="arrow"/>
 
-  <path d="M280 235 L350 235" class="arrow"/>
-  <path d="M560 235 L630 235" class="arrow"/>
-  <path d="M840 235 L910 235" class="arrow"/>
-  <path d="M1015 320 L1015 390" class="arrow"/>
-  <path d="M910 520 L800 520" class="arrow"/>
-  <path d="M540 520 L470 520" class="arrow"/>
+  <line x1="70" y1="410" x2="1330" y2="410" class="lane"/>
 
-  <text x="300" y="220" class="note">supervision</text>
-  <text x="580" y="220" class="note">checkpoint sweep</text>
-  <text x="865" y="220" class="note">hard examples</text>
-  <text x="1028" y="362" class="note">warm-start input</text>
-  <text x="815" y="505" class="note">results</text>
-  <text x="488" y="505" class="note">refined policy</text>
+  <rect x="180" y="455" width="310" height="185" rx="22" ry="22" fill="#ffeceb" class="card"/>
+  <text x="210" y="495" class="section">5. GRPO Refinement</text>
+  <text x="210" y="528" class="body">starts from the SFT adapter</text>
+  <text x="210" y="554" class="body">short RL schedule, low LR</text>
+  <text x="210" y="580" class="body">tries to improve task reward without</text>
+  <text x="210" y="606" class="body">destroying the supervised policy</text>
+  <text x="210" y="632" class="note">This stage is intentionally harder to win than SFT.</text>
+
+  <rect x="545" y="455" width="310" height="185" rx="22" ry="22" fill="#eef4ff" class="card"/>
+  <text x="575" y="495" class="section">6. Final Comparison</text>
+  <text x="575" y="528" class="body">no-tool baseline</text>
+  <text x="575" y="554" class="body">tool-aware baseline</text>
+  <text x="575" y="580" class="body">SFT train and held-out families</text>
+  <text x="575" y="606" class="body">GRPO train and held-out families</text>
+  <text x="575" y="632" class="note">This is where the benchmark shows whether RL actually helps.</text>
+
+  <rect x="910" y="455" width="320" height="185" rx="22" ry="22" fill="#ffffff" class="card"/>
+  <text x="940" y="495" class="section">7. Published Artifacts</text>
+  <text x="940" y="528" class="body">benchmark table</text>
+  <text x="940" y="554" class="body">SFT loss curve</text>
+  <text x="940" y="580" class="body">SFT held-out reward curve</text>
+  <text x="940" y="606" class="body">GRPO hard-task reward curve</text>
+  <text x="940" y="632" class="note">The benchmark story is carried by these outputs, not by raw logs.</text>
+
+  <path d="M1180 340 L1180 425" class="arrow"/>
+  <path d="M1040 550 L855 550" class="arrow"/>
+  <path d="M545 550 L490 550" class="arrow"/>
+
+  <text x="1192" y="390" class="note">warm-start source</text>
+  <text x="880" y="535" class="note">results</text>
+  <text x="505" y="535" class="note">policy</text>
 </svg>
