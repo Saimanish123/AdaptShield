@@ -1,5 +1,5 @@
 ---
-title: Janus (AdaptShield) — Adaptive Incident Response Under Polymorphic Adversaries
+title: "Janus (AdaptShield): Adaptive Incident Response Under Polymorphic Adversaries"
 emoji: 🛡️
 colorFrom: blue
 colorTo: red
@@ -14,12 +14,12 @@ tags:
 short_description: Two-phase adaptive cybersecurity benchmark for LLMs
 ---
 
-# Janus (AdaptShield) — Adaptive Incident Response Under Polymorphic Adversaries
+# Janus (AdaptShield): Adaptive Incident Response Under Polymorphic Adversaries
 
 **AdaptShield** is the environment: a two-phase agentic cybersecurity
 simulator where an LLM defends a 4-node enterprise network against an
 adversary that shifts strategy mid-episode. **Janus** is the model we
-trained on it — a Qwen2.5-1.5B LoRA, supervised then refined with GRPO.
+trained on it: a Qwen2.5-1.5B LoRA, supervised then refined with GRPO.
 On the hardest task Janus scores 0.90 on a held-out world family it
 never saw during training; a tool-aware heuristic baseline scores 0.18
 on the same task.
@@ -33,9 +33,9 @@ gap, and the [Results](#results) section is where the gap closes.
 ## Project Links
 
 - **HF Space (live env):** [`SaiManish123/adaptshield`](https://huggingface.co/spaces/SaiManish123/adaptshield)
-- **Colab notebook (SFT + GRPO reproducer, free T4):** `TODO`
+- **Colab notebook (SFT + GRPO reproducer, free T4):** [`Project_Janus(AdaptShield)_Final.ipynb`](https://drive.google.com/file/d/1uI9BaQTsn8YXOAlCtQCr_0N6ixLbqlba/view?usp=sharing)
 - **Artifacts / model repo:** [`SaiManish123/Janus`](https://huggingface.co/SaiManish123/Janus)
-- **Demo video:** `TODO`
+- **Demo video:** [`youtu.be/upX9a5zXHBM`](https://youtu.be/upX9a5zXHBM)
 
 ---
 
@@ -50,25 +50,32 @@ integration into a Vercel employee's Google Workspace, and pivoted from
 shadow AI through identity into Vercel's internal systems, where they
 enumerated and decrypted customer environment variables. The same week,
 a Broken Object Level Authorization flaw in Lovable.dev let any
-free-tier account read source code, Supabase credentials, Stripe keys
-and AI chat histories from other tenants — including projects built by
+free-tier account read source code, Supabase credentials, Stripe keys,
+and AI chat histories from other tenants, including projects built by
 AI itself. Eight months earlier, the Tea dating app left a Firebase
 bucket open and 72,000 verification selfies and driver's licenses of
 women on a safety app were scraped to 4chan within hours.
 
-Three different failure modes — identity hijack via shadow AI, broken
-authz in vibe-coded apps, classic cloud misconfig — but the same
-underlying problem for the defender's agent. The environment is shifting
-faster than any static training distribution can keep up with, and the
-real attacker doesn't sit still while you classify them.
+Three different failure modes, one underlying problem for the
+defender's agent: identity hijack via shadow AI, broken authorization
+in vibe-coded apps, and classic cloud misconfig. The environment is
+shifting faster than any static training distribution can keep up with,
+and the real attacker does not sit still while you classify them.
+
+Real campaigns drift through the kill chain (initial access, lateral
+movement, exfiltration) and the defender's job is to re-classify,
+contain, and eradicate as the picture changes. Static SOAR playbooks
+keyed to fixed indicators of compromise fail the moment the adversary
+rotates them; that is what an attacker TTP shift looks like in
+production, and it is the regime where dwell time blows out and Tier-1
+triage starts dropping signal.
 
 AdaptShield is built around that pressure. The environment forces the
-agent to (1) act on partial evidence, (2) hand judgment across two
-roles with an information bottleneck between them, (3) trade security
-correctness against operational blast radius, and (4) re-plan when the
-adversary's playbook changes mid-episode. Each of those is a separate
-failure mode in production SOC tooling, and the benchmark scores all
-four at once.
+agent to act on partial evidence, hand judgment across two roles with
+an information bottleneck between them, trade security correctness
+against operational blast radius, and re-plan when the attacker pivots
+mid-incident. Each of those is a separate failure mode in production
+SOC tooling, and the benchmark scores all four at once.
 
 ---
 
@@ -79,7 +86,7 @@ training Qwen2.5-1.5B-Instruct with a LoRA adapter. Eval is 50
 deterministic seeds per task, evaluated on a held-out world family
 the policy never saw during training.
 
-![AdaptShield held-out benchmark — tool-aware baseline vs SFT vs GRPO](assets/headline_results.png)
+![AdaptShield held-out benchmark: tool-aware baseline vs SFT vs GRPO](assets/headline_results.png)
 
 On the hard task (`polymorphic-zero-day`) the tool-aware heuristic
 baseline scores 0.18 and Janus holds 0.90 on the held-out family. On
@@ -97,9 +104,9 @@ matters where it should.
 
 Two things in this table are worth flagging.
 
-The tool-aware baseline scores 0.18 on the hard task — worse than the
-no-tool baseline at 0.38. That isn't a bug in the baseline; it's that
-bolting tools onto a heuristic without learning when to trust them
+The tool-aware baseline scores 0.18 on the hard task, worse than the
+no-tool baseline at 0.38. That is not a bug in the baseline; it is
+that bolting tools onto a heuristic without learning when to trust them
 makes the agent over-trigger on injected false positives. You see the
 same pattern in production with rule-based SOAR playbooks against
 adaptive adversaries.
@@ -107,16 +114,16 @@ adaptive adversaries.
 Held-out GRPO (0.902) actually edges out train-family GRPO (0.883). That
 is evidence the policy is generalizing across world templates rather
 than memorizing them. Without splitting the eval by world family this
-finding wouldn't be visible — same-seed evaluation would have credited
-the model for memorization it didn't do.
+finding would not be visible. Same-seed evaluation would have credited
+the model for memorization it did not do.
 
-### SFT — loss and held-out reward
+### SFT: loss and held-out reward
 
 ![SFT loss curve](https://huggingface.co/SaiManish123/Janus/resolve/main/sft_worldsplit_1_5b/loss_curve.png)
 
-![SFT learning curve — tool-aware baseline anchor, train family vs held-out family across checkpoints](https://huggingface.co/SaiManish123/Janus/resolve/main/sft_worldsplit_1_5b/reward_curve.png)
+![SFT learning curve: tool-aware baseline anchor, train family vs held-out family across checkpoints](https://huggingface.co/SaiManish123/Janus/resolve/main/sft_worldsplit_1_5b/reward_curve.png?v=2)
 
-### GRPO — refinement on the polymorphic adversary
+### GRPO: refinement on the polymorphic adversary
 
 ![GRPO reward curve, polymorphic-zero-day](https://huggingface.co/SaiManish123/Janus/resolve/main/grpo_polymorphic_zero_day_1_5b/reward_curve.png)
 
@@ -149,9 +156,12 @@ Each episode runs against a sampled mission profile, world-family
 template, and latent operational mode. The Threat Analyst investigates
 raw enterprise evidence through SOC tools and emits a structured
 handoff. The Tactical Executor sees only that handoff (not the raw
-state) and chooses the mitigation. A deterministic Python grader scores
-security correctness, business impact, dependency blast radius, and
-mission alignment. There is no LLM-as-judge anywhere in the loop.
+state) and chooses the mitigation. The split mirrors the
+Tier-1-to-Tier-2 escalation in a real SOC, where the responder acts on
+the analyst's written triage and never re-examines the raw telemetry.
+A deterministic Python grader scores security correctness, business
+impact, dependency blast radius, and mission alignment. There is no
+LLM-as-judge anywhere in the loop.
 
 ## Training Pipeline
 
@@ -171,7 +181,7 @@ Five steps, each reproducible from the repo:
 5. Publish adapters, curves, metrics, and benchmark tables to
    [`SaiManish123/Janus`](https://huggingface.co/SaiManish123/Janus).
 
-A free-tier Colab notebook reproduces steps 1–4 end-to-end on a T4 in
+A free-tier Colab notebook reproduces steps 1-4 end-to-end on a T4 in
 roughly 35 minutes using Qwen2.5-0.5B and reduced episode budgets. The
 numbers in this README come from the 1.5B run on a Hugging Face L4 Job.
 
@@ -182,12 +192,12 @@ numbers in this README come from the 1.5B run on a Hugging Face L4 Job.
 The agent defends a 4-node enterprise network (`auth_service`,
 `payment_service`, `database`, `api_gateway`). Each turn has two phases:
 
-**Phase 1 — Threat Analyst.** Agent reads SIEM metrics, can call SOC tools
-(log search, network telemetry, threat intel lookup), and emits a
-structured `Phase1Action` with threat type, target node, confidence and a
-recommended action.
+**Phase 1 (Threat Analyst).** Agent reads SIEM metrics, can call SOC
+tools (log search, network telemetry, threat intel lookup), and emits a
+structured `Phase1Action` with threat type, target node, confidence and
+a recommended action.
 
-**Phase 2 — Tactical Executor.** Agent receives only the Phase 1
+**Phase 2 (Tactical Executor).** Agent receives only the Phase 1
 assessment (blind to raw state) and emits a `Phase2Action`. The analyst
 has to communicate clearly because the executor cannot double-check the
 network.
@@ -195,7 +205,9 @@ network.
 The attacker escalates through `recon → exploit → exfiltration` if the
 agent fails to respond correctly. On the hard task, the attacker shifts
 strategy mid-episode and seeds false-positive noise that looks like a
-real attack but isn't — punishing reflexive isolation.
+real attack but isn't, which punishes reflexive isolation. This is the
+alert-fatigue regime that drives most production SOC false-positive
+budgets.
 
 ### Observation Space
 
@@ -205,7 +217,7 @@ real attack but isn't — punishing reflexive isolation.
   "network_nodes": {
     "auth_service": {"status": "...", "request_rate": 0, "error_rate": 0.0, "cpu": 0}
   },
-  "active_alerts": ["raw metric alert strings — no MITRE codes"],
+  "active_alerts": ["raw metric alert strings (no MITRE codes)"],
   "attack_stage": "recon | exploit | exfiltration | none",
   "history": [{"turn": "1", "p1": "classified:brute_force", "p2": "rate_limit→auth_service"}],
   "phase1_assessment": {"threat_type": "...", "confidence": 0.9, "target_node": "..."},
@@ -213,8 +225,8 @@ real attack but isn't — punishing reflexive isolation.
 }
 ```
 
-Phase 2 observations have empty `network_nodes` and `active_alerts` — the
-executor only sees the analyst's handoff.
+Phase 2 observations have empty `network_nodes` and `active_alerts`.
+The executor only sees the analyst's handoff.
 
 ### Action Space
 
@@ -250,8 +262,8 @@ Valid actions: `rate_limit`, `isolate`, `honeypot`, `patch`, `monitor`.
 | False positive on benign event | -0.39 |
 | Catastrophic: database exfiltrated | -0.49, `done=True` |
 
-Scores are clipped to the open interval `(0.01, 0.99)` — the grader never
-emits exactly 0 or 1, which keeps GRPO advantages well-defined.
+Scores are clipped to the open interval `(0.01, 0.99)`. The grader
+never emits exactly 0 or 1, which keeps GRPO advantages well-defined.
 
 ### Operational Impact Layer
 
@@ -272,7 +284,11 @@ highest). The grader emits `business_impact`, `availability_impact`,
 inside `score_breakdown`. The reward adjustment is capped at `±0.05` per
 turn, which keeps the training signal stable while leaving the replay
 detailed enough to explain whether the agent stopped the attack cleanly
-or caused unnecessary business disruption getting there.
+or caused unnecessary business disruption getting there. This is the
+MTTR-versus-availability tradeoff every SOC actually navigates:
+containment that bricks `auth_service` to stop a credential-stuffing
+campaign also takes legitimate users offline, so "isolate everything"
+is not a winning playbook.
 
 ### Mission-Aware Objectives
 
@@ -299,8 +315,8 @@ for what the benchmark actually measures:
 
 - **Information bottleneck between phases.** Phase 2's observation has
   empty `network_nodes` and `active_alerts`. The executor only sees
-  Phase 1's structured handoff. If Phase 1 can't communicate clearly,
-  Phase 2 fails — and you see it in the score, not in a separate metric.
+  Phase 1's structured handoff. If Phase 1 cannot communicate clearly,
+  Phase 2 fails, and you see it in the score, not in a separate metric.
   This is what makes the env actually test cross-role coordination
   rather than just two independent policies stitched together.
 - **Train/eval split by world family, not by seed.** The world templates
@@ -309,19 +325,21 @@ for what the benchmark actually measures:
   or a specific alert distribution will pass train evals and fail
   held-out. Same-seed evaluation would have hidden this.
 - **Open scoring interval `(0.01, 0.99)`.** The grader never emits
-  exactly 0 or 1. This keeps GRPO advantage estimates well-defined —
-  saturating rewards collapse the variance the algorithm needs.
+  exactly 0 or 1. This keeps GRPO advantage estimates well-defined.
+  Saturating rewards collapse the variance the algorithm needs.
 - **Bounded auxiliary signals.** Operational impact is capped at `±0.05`
   per turn and mission alignment at `±0.04`. They steer the policy
-  without dominating the security signal, so the training curve doesn't
-  get hijacked by a single side-objective.
+  without dominating the security signal, so the training curve does
+  not get hijacked by a single side-objective.
 - **Deterministic Python grader, no LLM-as-judge.** Rewards come from
   strategy matching against a fixed ground-truth attacker, not from a
   judge model. The benchmark cannot be gamed by a more eloquent policy.
-- **Phase-1 alerts are raw metric strings, not MITRE codes.** The agent
-  has to do the classification, not match a label to a label. This is
-  what makes the soc-tool baseline collapse on the hard task: heuristic
-  classification doesn't survive injected noise.
+- **Phase-1 alerts are raw metric strings, not pre-tagged MITRE ATT&CK
+  techniques.** The agent has to do the classification itself, not
+  match a label to a label. This is what makes the heuristic baseline
+  collapse on the hard task: rule-based classification keyed on fixed
+  indicators of compromise does not survive the injected false-positive
+  noise that real polymorphic adversaries use to drown Tier-1 triage.
 
 ---
 
@@ -417,12 +435,13 @@ adaptshield/
 
 `AdaptShieldEnvironment` extends OpenEnv's `Environment` base class and
 follows the Gym-style API (`reset`, `step`, `state`). The client in
-`client.py` talks to the server only through HTTP — no shared imports,
-no leaking of server internals. None of the SOC tools are named
-`reset`, `step`, `state`, or `close`, so they don't collide with the
-reserved MCP tool names. Grading is deterministic Python; the reward
-signal and the benchmark scores both come from strategy matching
-against a fixed ground-truth attacker, never from an LLM judge.
+`client.py` talks to the server only through HTTP, with no shared
+imports and no leaking of server internals. None of the SOC tools are
+named `reset`, `step`, `state`, or `close`, so they do not collide with
+the reserved MCP tool names. Grading is deterministic Python; the
+reward signal and the benchmark scores both come from strategy
+matching against a fixed ground-truth attacker, never from an LLM
+judge.
 
 All adapters, curves, metrics, and benchmark tables for the 1.5B run
 are public on [`SaiManish123/Janus`](https://huggingface.co/SaiManish123/Janus).
